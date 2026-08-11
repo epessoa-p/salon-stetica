@@ -1,0 +1,29 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Client extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    protected $fillable = [
+        'company_id', 'full_name', 'id_number', 'phone', 'email', 'birthdate',
+        'gender', 'address', 'source', 'notes', 'active', 'created_by',
+    ];
+
+    protected $casts = [
+        'birthdate' => 'date',
+        'active' => 'boolean',
+        'deleted_at' => 'datetime',
+    ];
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+}
