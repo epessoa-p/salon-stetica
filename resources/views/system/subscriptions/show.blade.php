@@ -48,6 +48,65 @@
             </div>
         </div>
 
+        {{-- Overrides por empresa --}}
+        @php $planFeats = $subscription->plan?->features; $featOverride = $subscription->features_override; @endphp
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-4">
+                <h6 class="fw-bold mb-3"><i class="bi bi-sliders"></i> Personalización de esta empresa (overrides)</h6>
+                <p class="text-muted small mb-3">Deja un límite vacío para heredar el del plan. Los overrides ganan al plan solo para esta empresa.</p>
+                <form action="{{ route('subscriptions.overrides', $company) }}" method="POST">
+                    @csrf
+                    @method('PUT')
+                    <div class="row g-3">
+                        <div class="col-md-2">
+                            <label class="form-label small">Sucursales</label>
+                            <input type="number" min="0" name="max_branches_override" class="form-control no-uppercase" value="{{ old('max_branches_override', $subscription->max_branches_override) }}" placeholder="{{ $subscription->plan?->max_branches ?? '∞' }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">Personal</label>
+                            <input type="number" min="0" name="max_personal_override" class="form-control no-uppercase" value="{{ old('max_personal_override', $subscription->max_personal_override) }}" placeholder="{{ $subscription->plan?->max_personal ?? '∞' }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">Cajas</label>
+                            <input type="number" min="0" name="max_cajas_override" class="form-control no-uppercase" value="{{ old('max_cajas_override', $subscription->max_cajas_override) }}" placeholder="{{ $subscription->plan?->max_cajas ?? '∞' }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">Usuarios</label>
+                            <input type="number" min="0" name="max_users_override" class="form-control no-uppercase" value="{{ old('max_users_override', $subscription->max_users_override) }}" placeholder="{{ $subscription->plan?->max_users ?? '∞' }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">Productos</label>
+                            <input type="number" min="0" name="max_products_override" class="form-control no-uppercase" value="{{ old('max_products_override', $subscription->max_products_override) }}" placeholder="∞">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">Días de gracia</label>
+                            <input type="number" min="0" name="grace_days" class="form-control no-uppercase" value="{{ old('grace_days', $subscription->grace_days) }}" placeholder="{{ config('saas.grace_days', 5) }}">
+                        </div>
+                    </div>
+
+                    <div class="form-check form-switch mt-3">
+                        <input class="form-check-input" type="checkbox" name="use_features_override" value="1" id="use_feat" {{ $featOverride !== null ? 'checked' : '' }} onchange="document.getElementById('feat-box').style.display=this.checked?'':'none'">
+                        <label class="form-check-label" for="use_feat">Personalizar módulos de esta empresa (ignora los del plan)</label>
+                    </div>
+                    <div id="feat-box" class="row g-2 mt-1" style="{{ $featOverride !== null ? '' : 'display:none;' }}">
+                        @foreach(\App\Models\Plan::MODULES as $key => $label)
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="features_override[]" value="{{ $key }}"
+                                           {{ in_array($key, $featOverride ?? $planFeats ?? []) ? 'checked' : '' }}>
+                                    <label class="form-check-label">{{ $label }}</label>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <div class="mt-3">
+                        <button class="btn btn-outline-primary" type="submit"><i class="bi bi-save"></i> Guardar overrides</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         {{-- Registrar pago --}}
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-body p-4">

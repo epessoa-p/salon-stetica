@@ -77,6 +77,8 @@ class PlanController extends Controller
 
         $data['currency'] = $data['currency'] ?? config('saas.currency', 'BOB');
         $data['active'] = (bool) ($data['active'] ?? false);
+        // Módulos incluidos: si no llega ninguno, se guarda lista vacía (ningún módulo).
+        $data['features'] = $data['features'] ?? [];
 
         return $data;
     }

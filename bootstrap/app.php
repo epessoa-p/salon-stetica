@@ -11,11 +11,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Fija la empresa activa (Tenancy) en cada petición web autenticada.
+        $middleware->web(append: [
+            \App\Http\Middleware\SetTenant::class,
+        ]);
+
         $middleware->alias([
+            'set-tenant' => \App\Http\Middleware\SetTenant::class,
             'check-role' => \App\Http\Middleware\CheckRole::class,
             'check-company' => \App\Http\Middleware\CheckCompany::class,
             'check-permission' => \App\Http\Middleware\CheckPermission::class,
             'check-subscription' => \App\Http\Middleware\CheckSubscription::class,
+            'plan' => \App\Http\Middleware\CheckPlanModule::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

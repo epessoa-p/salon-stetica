@@ -19,6 +19,7 @@
             <div class="alert alert-danger"><ul class="mb-0 ps-3">@foreach($errors->all() as $e)<li>{{ $e }}</li>@endforeach</ul></div>
         @endif
 
+        @php $specialistOptions = '<option value="">Sin asignar</option>'; foreach ($specialists as $sp) { $specialistOptions .= '<option value="'.$sp->id.'">'.e($sp->full_name).'</option>'; } @endphp
         <form action="{{ route('sales.store') }}" method="POST" id="pos-form">
             @csrf
             <div class="row g-4">
@@ -46,6 +47,7 @@
                                     <thead class="table-light">
                                         <tr>
                                             <th>Servicio</th>
+                                            <th style="width:160px">Atendido por</th>
                                             <th style="width:90px" class="text-center">Cant.</th>
                                             <th style="width:120px" class="text-end">Precio</th>
                                             <th style="width:120px" class="text-end">Desc.</th>
@@ -54,7 +56,7 @@
                                         </tr>
                                     </thead>
                                     <tbody id="items-body">
-                                        <tr id="empty-row"><td colspan="6" class="text-center text-muted py-4">Agrega servicios a la venta.</td></tr>
+                                        <tr id="empty-row"><td colspan="7" class="text-center text-muted py-4">Agrega servicios a la venta.</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -138,6 +140,7 @@
 @push('scripts')
 <script>
 (function () {
+    var SPECIALIST_OPTIONS = @json($specialistOptions);
     var idx = 0;
     var picker = document.getElementById('service-picker');
     var body = document.getElementById('items-body');
@@ -172,6 +175,7 @@
             '<td>' + name +
                 '<input type="hidden" name="items[' + i + '][service_id]" value="' + (id || '') + '">' +
                 '<input type="hidden" name="items[' + i + '][description]" value="' + name.replace(/"/g, '&quot;') + '"></td>' +
+            '<td><select class="form-select form-select-sm" name="items[' + i + '][personal_id]">' + SPECIALIST_OPTIONS + '</select></td>' +
             '<td><input type="number" min="0.01" step="1" class="form-control form-control-sm text-center no-uppercase i-qty" name="items[' + i + '][quantity]" value="1"></td>' +
             '<td><input type="number" min="0" step="0.01" class="form-control form-control-sm text-end no-uppercase i-price" name="items[' + i + '][unit_price]" value="' + money(price) + '"></td>' +
             '<td><input type="number" min="0" step="0.01" class="form-control form-control-sm text-end no-uppercase i-disc" name="items[' + i + '][discount]" value="0"></td>' +

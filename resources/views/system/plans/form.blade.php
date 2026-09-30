@@ -86,6 +86,22 @@
                     </div>
                 </div>
 
+                <hr class="my-4">
+                <h6 class="fw-bold mb-2"><i class="bi bi-grid"></i> Módulos incluidos</h6>
+                <p class="text-muted small mb-3">Marca los módulos que este plan habilita. Los datos maestros (Personal, Sucursales, Usuarios, Roles, Reportes) están siempre disponibles.</p>
+                @php $planFeatures = old('features', $plan?->features ?? array_keys(\App\Models\Plan::MODULES)); @endphp
+                <div class="row g-2">
+                    @foreach(\App\Models\Plan::MODULES as $key => $label)
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="features[]" value="{{ $key }}"
+                                       id="feat_{{ $key }}" {{ in_array($key, $planFeatures ?? []) ? 'checked' : '' }}>
+                                <label class="form-check-label" for="feat_{{ $key }}">{{ $label }}</label>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+
                 <div class="row g-3 mt-1">
                     <div class="col-md-3">
                         <label class="form-label">Orden</label>

@@ -13,7 +13,7 @@ class SaleItem extends Model
     protected $table = 'sale_details';
 
     protected $fillable = [
-        'sale_id', 'product_id', 'service_id', 'description', 'quantity',
+        'sale_id', 'product_id', 'service_id', 'personal_id', 'description', 'quantity',
         'unit_price', 'discount', 'total',
     ];
 
@@ -32,5 +32,10 @@ class SaleItem extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
+    }
+
+    public function specialist(): BelongsTo
+    {
+        return $this->belongsTo(Personal::class, "personal_id");
     }
 }

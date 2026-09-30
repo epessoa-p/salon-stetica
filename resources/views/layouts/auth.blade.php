@@ -3,15 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'Iniciar sesión - Estética & Belleza')</title>
+    <title>@yield('title', 'Iniciar sesión - Glamora')</title>
+    <link rel="icon" type="image/png" href="{{ asset('images/brand/favicon.png') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
+        /* Paleta tomada del logo de marca Glamora */
         :root {
-            --brand: #d67aa1;
-            --brand-dark: #a34e78;
-            --brand-glow: rgba(236, 175, 202, 0.6);
-            --brand-soft: rgba(214, 122, 161, 0.28);
+            --brand: #cf7f92;
+            --brand-dark: #a35570;
+            --brand-glow: rgba(224, 170, 185, 0.6);
+            --brand-soft: rgba(207, 127, 146, 0.28);
+        }
+
+        /* Logo completo en la cabecera del login */
+        .brand-logo-full {
+            display: block;
+            width: 100%;
+            max-width: 270px;
+            height: auto;
+            margin: 0 auto 6px;
         }
 
         html, body {

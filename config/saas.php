@@ -23,4 +23,25 @@ return [
         'qr'            => 'Pago QR',
         'efectivo'      => 'Efectivo',
     ],
+
+    // Categorías sugeridas para el módulo de Ingresos y Gastos.
+    'income_categories' => [
+        'Venta de servicios',
+        'Venta de productos',
+        'Aporte de socio',
+        'Devolución de proveedor',
+        'Otros ingresos',
+    ],
+
+    'expense_categories' => [
+        'Alquiler',
+        'Servicios básicos',
+        'Insumos',
+        'Sueldos',
+        'Comisiones',
+        'Publicidad',
+        'Mantenimiento',
+        'Impuestos',
+        'Otros gastos',
+    ],
 ];

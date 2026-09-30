@@ -28,6 +28,8 @@ class StorePlanRequest extends FormRequest
             'max_personal' => 'nullable|integer|min:0',
             'max_cajas' => 'nullable|integer|min:0',
             'max_users' => 'nullable|integer|min:0',
+            'features' => 'nullable|array',
+            'features.*' => ['string', Rule::in(array_keys(\App\Models\Plan::MODULES))],
             'active' => 'nullable|boolean',
             'sort_order' => 'nullable|integer|min:0',
         ];

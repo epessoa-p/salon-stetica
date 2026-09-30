@@ -47,6 +47,7 @@ Route::prefix('admin/subscriptions')->name('subscriptions.')->group(function () 
     Route::get('/{company}', [SubscriptionController::class, 'show'])->name('show');
     Route::get('/{company}/edit', [SubscriptionController::class, 'edit'])->name('edit');
     Route::put('/{company}', [SubscriptionController::class, 'update'])->name('update');
+    Route::put('/{company}/overrides', [SubscriptionController::class, 'updateOverrides'])->name('overrides');
 });
 
 // SaaS: Pagos de suscripción

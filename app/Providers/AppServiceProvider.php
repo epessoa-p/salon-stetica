@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Support\Tenancy;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -11,7 +12,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // La empresa activa vive durante todo el request (una sola instancia).
+        $this->app->singleton(Tenancy::class);
     }
 
     /**

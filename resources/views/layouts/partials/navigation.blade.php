@@ -78,7 +78,7 @@
                 ['label' => 'Empleados',   'icon' => 'bi-person-vcard',    'built' => true, 'route' => 'personal.index', 'pattern' => 'personal.*'],
                 ['label' => 'Cargos',      'icon' => 'bi-briefcase',       'built' => true, 'route' => 'cargos.index',   'pattern' => 'cargos.*'],
                 ['label' => 'Horarios',    'icon' => 'bi-clock',           'built' => false],
-                ['label' => 'Comisiones',  'icon' => 'bi-percent',         'built' => false],
+                ['label' => 'Comisiones',  'icon' => 'bi-percent',         'built' => true, 'route' => 'commissions.index', 'pattern' => 'commissions.*'],
                 ['label' => 'Asistencia',  'icon' => 'bi-calendar2-check', 'built' => false],
             ],
         ],
@@ -89,8 +89,8 @@
             'items' => [
                 ['label' => 'Cajas',            'icon' => 'bi-safe',         'built' => true, 'route' => 'cajas.index', 'pattern' => 'cajas.*'],
                 ['label' => 'Arqueos',          'icon' => 'bi-clipboard-check',  'built' => true, 'route' => 'cash-sessions.index', 'pattern' => 'cash-sessions.*'],
-                ['label' => 'Ingresos',         'icon' => 'bi-arrow-down-circle','built' => false],
-                ['label' => 'Gastos',           'icon' => 'bi-arrow-up-circle',  'built' => false],
+                ['label' => 'Ingresos',         'icon' => 'bi-arrow-down-circle','built' => true, 'route' => 'incomes.index',  'pattern' => 'incomes.*'],
+                ['label' => 'Gastos',           'icon' => 'bi-arrow-up-circle',  'built' => true, 'route' => 'expenses.index', 'pattern' => 'expenses.*'],
                 ['label' => 'Cuentas x cobrar', 'icon' => 'bi-wallet2',          'built' => false],
                 ['label' => 'Cuentas x pagar',  'icon' => 'bi-credit-card',      'built' => false],
             ],
@@ -100,7 +100,7 @@
             'icon'  => 'bi-graph-up',
             'color' => '#3b82f6',
             'items' => [
-                ['label' => 'Reportes', 'icon' => 'bi-bar-chart', 'built' => false],
+                ['label' => 'Reportes', 'icon' => 'bi-bar-chart', 'built' => true, 'route' => 'reports.index', 'pattern' => 'reports.*'],
             ],
         ],
         [
@@ -153,7 +153,23 @@
 {{-- Secciones colapsables --}}
 @foreach($sections as $section)
     @php
-        $items = array_filter($section['items'], fn ($i) => ($i['visible'] ?? true));
+        // Oculta la sección si su módulo no está incluido en el plan (super admin siempre ve).
+        $sectionModule = [
+            'Clientes' => 'crm', 'Agenda' => 'scheduling', 'Servicios' => 'catalog', 'Ventas' => 'sales',
+            'Inventario' => 'inventory', 'Compras' => 'purchasing', 'Caja y Finanzas' => 'finance', 'Marketing' => 'marketing',
+        ][$section['label']] ?? null;
+        if ($sectionModule && !$u->is_super_admin && !($co && $co->planAllows($sectionModule))) continue;
+
+        $items = array_filter($section['items'], function ($i) use ($u, $co) {
+            // Ítems "Próx." (no construidos) siempre se muestran deshabilitados.
+            if (!($i['built'] ?? true)) return true;
+            // Visibilidad explícita (users/roles/sistema) manda.
+            if (array_key_exists('visible', $i)) return (bool) $i['visible'];
+            // Deriva el permiso <módulo>.view desde el nombre de ruta.
+            $module = \Illuminate\Support\Str::before($i['route'] ?? '', '.');
+            $module = ['purchase-orders' => 'purchases', 'cash-sessions' => 'cash'][$module] ?? $module;
+            return $u->is_super_admin || ($co && $u->hasPermissionInCompany($module . '.view', $co));
+        });
         if (empty($items)) continue;
         $sectionKey = \Illuminate\Support\Str::slug($section['label']);
         $isActive = collect($items)->contains(fn ($i) => ($i['built'] ?? true) && isset($i['pattern']) && request()->routeIs($i['pattern']));

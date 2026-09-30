@@ -28,11 +28,23 @@ class CheckSubscription
             return $next($request);
         }
 
-        // Si la empresa no tiene acceso (vencida más allá de la gracia), bloquear.
-        if (!$company->hasAccess()) {
+        // Sin acceso (vencida más allá de la gracia / suspendida): bloquear.
+        if (!$company->subscriptionAllowsRead()) {
             return redirect()->route('subscription.blocked');
         }
 
+        // En periodo de gracia: solo lectura. Se bloquean las escrituras.
+        if (!$company->subscriptionAllowsWrite() && $this->isWrite($request)) {
+            return redirect()->back()->withErrors([
+                'error' => 'Tu suscripción está en periodo de gracia (solo lectura). Renueva para poder registrar cambios.',
+            ]);
+        }
+
         return $next($request);
+    }
+
+    protected function isWrite(Request $request): bool
+    {
+        return in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'], true);
     }
 }

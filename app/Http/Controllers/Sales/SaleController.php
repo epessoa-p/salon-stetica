@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\CashSession;
+use App\Models\Commission;
 use App\Models\Client;
+use App\Models\Personal;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\Service;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -51,6 +54,7 @@ class SaleController extends Controller
             'clients' => Client::where('company_id', $companyId)->where('active', true)->orderBy('full_name')->get(),
             'services' => Service::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(),
             'branches' => Branch::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(),
+            'specialists' => Personal::where('company_id', $companyId)->where('active', true)->orderBy('full_name')->get(),
             'openSessions' => CashSession::with('register')
                 ->where('status', 'open')
                 ->whereHas('register', fn ($q) => $q->where('company_id', $companyId))
@@ -80,6 +84,7 @@ class SaleController extends Controller
             'items.*.quantity'    => ['required', 'numeric', 'min:0.01'],
             'items.*.unit_price'  => ['required', 'numeric', 'min:0'],
             'items.*.discount'    => ['nullable', 'numeric', 'min:0'],
+            'items.*.personal_id' => ['nullable', 'exists:personals,id'],
         ]);
 
         // Cada línea debe tener servicio o descripción.
@@ -106,6 +111,7 @@ class SaleController extends Controller
 
                     $lines[] = [
                         'service_id'  => $item['service_id'] ?? null,
+                        'personal_id' => $item['personal_id'] ?? null,
                         'description' => $item['description'] ?? (Service::find($item['service_id'] ?? 0)?->name),
                         'quantity'    => $qty,
                         'unit_price'  => $price,
@@ -148,7 +154,8 @@ class SaleController extends Controller
                 ]);
 
                 foreach ($lines as $line) {
-                    $sale->items()->create($line);
+                    $item = $sale->items()->create($line);
+                    $this->createCommission($sale, $item);
                 }
 
                 // Ingreso en caja si hay sesión abierta.
@@ -185,6 +192,9 @@ class SaleController extends Controller
         DB::transaction(function () use ($sale) {
             $sale->update(['status' => 'anulada']);
 
+            // Las comisiones generadas por esta venta quedan sin efecto.
+            Commission::where('sale_id', $sale->id)->where('status', 'pendiente')->delete();
+
             $session = $sale->session;
             if ($session && $session->isOpen()) {
                 $session->movements()->create([
@@ -202,6 +212,35 @@ class SaleController extends Controller
     }
 
     // ---- Helpers ----
+
+    /**
+     * Genera la comision del especialista por una linea de servicio vendida.
+     * Solo aplica si la linea tiene especialista y el servicio define un porcentaje.
+     */
+    protected function createCommission(Sale $sale, SaleItem $item): void
+    {
+        if (!$item->personal_id || !$item->service_id) {
+            return;
+        }
+
+        $rate = (float) (Service::find($item->service_id)?->commission_percent ?? 0);
+        if ($rate <= 0) {
+            return;
+        }
+
+        Commission::create([
+            'company_id'     => $sale->company_id,
+            'personal_id'    => $item->personal_id,
+            'sale_id'        => $sale->id,
+            'sale_detail_id' => $item->id,
+            'amount'         => round((float) $item->total * $rate / 100, 2),
+            'rate'           => $rate,
+            'status'         => 'pendiente',
+            'period_start'   => $sale->sale_date?->toDateString(),
+            'period_end'     => $sale->sale_date?->toDateString(),
+            'created_by'     => auth()->id(),
+        ]);
+    }
 
     protected function companyId(): ?int
     {

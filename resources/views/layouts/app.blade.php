@@ -80,9 +80,9 @@
                     <div class="brand-title">{{ $currentCompany->name }}</div>
                 </div>
             @else
-                <div class="brand-logo"><img src="{{ asset('images/scz-soft.png') }}" alt="SCZ SOFT" onerror="this.style.display='none'"></div>
+                <div class="brand-logo brand-logo-iso"><img src="{{ asset('images/brand/glamora-isotipo-sm.png') }}" alt="Glamora" onerror="this.style.display='none'"></div>
                 <div>
-                    <div class="brand-title">SCZ SOFT</div>
+                    <div class="brand-title">Glamora</div>
                     <small class="text-muted">Modo Global</small>
                 </div>
             @endif
@@ -207,14 +207,44 @@
 
     .app-sidebar {
         width: 250px;
+        flex: 0 0 250px;
         background: var(--company-nav-grad);
         color: var(--company-nav-text);
         border-right: 1px solid color-mix(in srgb, var(--company-nav-text) 12%, transparent);
         box-shadow: inset -8px 0 20px -18px rgba(0, 0, 0, 0.5);
-        padding: 12px 10px;
+        padding: 12px 10px 24px;
         position: sticky;
         top: 0;
+        /* align-self evita que flex estire el elemento y rompa el sticky */
+        align-self: flex-start;
         height: 100vh;
+        /* Si el menú es más alto que la ventana, scrollea dentro de la barra
+           (antes los últimos ítems se salían del fondo) */
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    /* Scrollbar discreta, en el tono del menú */
+    .app-sidebar {
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(in srgb, var(--company-nav-text) 25%, transparent) transparent;
+    }
+
+    .app-sidebar::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .app-sidebar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .app-sidebar::-webkit-scrollbar-thumb {
+        background: color-mix(in srgb, var(--company-nav-text) 22%, transparent);
+        border-radius: 8px;
+    }
+
+    .app-sidebar::-webkit-scrollbar-thumb:hover {
+        background: color-mix(in srgb, var(--company-nav-text) 38%, transparent);
     }
 
     .sidebar-brand {
@@ -254,6 +284,16 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
+    }
+
+    /* Isotipo de marca (PNG transparente): se muestra completo, sin fondo */
+    .brand-logo-iso {
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .brand-logo-iso img {
+        object-fit: contain;
     }
 
     .brand-title {

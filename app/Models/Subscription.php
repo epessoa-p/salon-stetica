@@ -16,6 +16,8 @@ class Subscription extends Model
     protected $fillable = [
         'company_id', 'plan_id', 'status', 'trial_ends_at', 'starts_at', 'ends_at',
         'amount', 'notes', 'created_by',
+        'max_users_override', 'max_branches_override', 'max_cajas_override',
+        'max_personal_override', 'max_products_override', 'features_override', 'grace_days',
     ];
 
     protected $casts = [
@@ -23,6 +25,7 @@ class Subscription extends Model
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
         'amount' => 'decimal:2',
+        'features_override' => 'array',
         'deleted_at' => 'datetime',
     ];
 
@@ -60,7 +63,7 @@ class Subscription extends Model
         }
 
         $now = now();
-        $graceDays = (int) config('saas.grace_days', 5);
+        $graceDays = $this->graceDays();
 
         // En prueba: aún no hay pago y la prueba no ha vencido.
         if (!$this->ends_at && $this->trial_ends_at && $now->lte($this->trial_ends_at)) {
@@ -91,5 +94,44 @@ class Subscription extends Model
     {
         $end = $this->effectiveEndsAt();
         return $end ? now()->startOfDay()->diffInDays($end->copy()->startOfDay(), false) : null;
+    }
+
+    /** Días de gracia efectivos (override de la suscripción o config global). */
+    public function graceDays(): int
+    {
+        return (int) ($this->grace_days ?? config('saas.grace_days', 5));
+    }
+
+    /** Límite efectivo de un recurso: override de la empresa ?? límite del plan. Null = ilimitado. */
+    public function effectiveLimitFor(string $key): ?int
+    {
+        $override = match ($key) {
+            'users'    => $this->max_users_override,
+            'branches' => $this->max_branches_override,
+            'cajas'    => $this->max_cajas_override,
+            'personal' => $this->max_personal_override,
+            'products' => $this->max_products_override,
+            default    => null,
+        };
+
+        return $override ?? $this->plan?->limitFor($key);
+    }
+
+    /** Módulos efectivos: override de la empresa ?? features del plan. Null = sin restricción. */
+    public function effectiveFeatures(): ?array
+    {
+        return $this->features_override ?? $this->plan?->features;
+    }
+
+    /** Uso normal (leer y escribir): prueba o periodo pagado vigente. */
+    public function allowsWrite(): bool
+    {
+        return in_array($this->computedStatus(), ['trial', 'active'], true);
+    }
+
+    /** Al menos entrar y consultar: incluye periodo de gracia. */
+    public function allowsRead(): bool
+    {
+        return in_array($this->computedStatus(), ['trial', 'active', 'grace'], true);
     }
 }

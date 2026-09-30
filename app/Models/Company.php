@@ -189,11 +189,53 @@ class Company extends Model
      */
     public function canCreate(string $resource): bool
     {
-        $limit = $this->planLimit($resource);
+        $limit = $this->effectiveLimit($resource);
         if ($limit === null) {
             return true; // ilimitado o sin plan con límite
         }
         return $this->resourceCount($resource) < $limit;
+    }
+
+    /**
+     * Límite efectivo (override de la empresa ?? plan). Null = ilimitado.
+     */
+    public function effectiveLimit(string $resource): ?int
+    {
+        return $this->currentSubscription()?->effectiveLimitFor($resource);
+    }
+
+    /**
+     * Módulos efectivos de esta empresa (override ?? plan). Null = sin restricción.
+     */
+    public function effectiveFeatures(): ?array
+    {
+        return $this->currentSubscription()?->effectiveFeatures();
+    }
+
+    /** ¿La suscripción permite escribir (crear/editar)? */
+    public function subscriptionAllowsWrite(): bool
+    {
+        $sub = $this->currentSubscription();
+        return $sub ? $sub->allowsWrite() : false;
+    }
+
+    /** ¿La suscripción permite al menos leer (incluye gracia)? */
+    public function subscriptionAllowsRead(): bool
+    {
+        $sub = $this->currentSubscription();
+        return $sub ? $sub->allowsRead() : false;
+    }
+
+    /**
+     * ¿El plan de la empresa incluye este módulo?
+     */
+    public function planAllows(string $feature): bool
+    {
+        $features = $this->effectiveFeatures();
+        if ($features === null) {
+            return true; // plan sin features definidos = sin restricción (compatibilidad)
+        }
+        return in_array($feature, $features, true);
     }
 
     /**

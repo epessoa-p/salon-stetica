@@ -24,16 +24,21 @@ Route::middleware('auth')->group(function () {
     // Módulos protegidos por estado de suscripción (el super admin nunca se bloquea)
     Route::middleware('check-subscription')->group(function () {
         require __DIR__.'/web/dashboard.php';
-        require __DIR__.'/web/crm.php';
-        require __DIR__.'/web/catalog.php';
-        require __DIR__.'/web/scheduling.php';
-        require __DIR__.'/web/sales.php';
-        require __DIR__.'/web/inventory.php';
-        require __DIR__.'/web/purchasing.php';
+
+        // Módulos gobernados por el plan de la empresa (plan:<módulo>).
+        Route::middleware('plan:crm')->group(fn () => require __DIR__.'/web/crm.php');
+        Route::middleware('plan:catalog')->group(fn () => require __DIR__.'/web/catalog.php');
+        Route::middleware('plan:scheduling')->group(fn () => require __DIR__.'/web/scheduling.php');
+        Route::middleware('plan:sales')->group(fn () => require __DIR__.'/web/sales.php');
+        Route::middleware('plan:inventory')->group(fn () => require __DIR__.'/web/inventory.php');
+        Route::middleware('plan:purchasing')->group(fn () => require __DIR__.'/web/purchasing.php');
+        Route::middleware('plan:finance')->group(fn () => require __DIR__.'/web/finance.php');
+
+        // Administrativos / datos maestros (siempre disponibles, sin plan:).
         require __DIR__.'/web/system.php';
+        require __DIR__.'/web/reports.php';
         require __DIR__.'/web/staff.php';
         require __DIR__.'/web/organization.php';
-        require __DIR__.'/web/finance.php';
     });
 });
 

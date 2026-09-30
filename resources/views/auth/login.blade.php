@@ -1,13 +1,12 @@
 @extends('layouts.auth')
 
-@section('title', 'Iniciar sesión - Estética & Belleza')
+@section('title', 'Iniciar sesión - Glamora')
 
 @section('content')
 <div class="auth-container">
     <div class="auth-card">
         <div class="auth-header">
-            <div class="logo"><i class="bi bi-flower1"></i></div>
-            <h1>Estética &amp; Belleza</h1>
+            <img src="{{ asset('images/brand/glamora-full-sm.png') }}" alt="Glamora" class="brand-logo-full">
             <p>Inicia sesión para acceder</p>
         </div>
 
