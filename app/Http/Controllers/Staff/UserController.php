@@ -16,13 +16,21 @@ class UserController extends Controller
         $user = auth()->user();
 
         if ($user->is_super_admin) {
-            $users = User::paginate(15);
+            $users = User::with('companies')->orderByDesc('is_super_admin')->orderBy('name')->paginate(15);
         } else {
             $company = $user->getCurrentCompany();
-            $users = $company->users()->paginate(15);
+            $users = $company->users()->with('companies')->orderBy('name')->paginate(15);
         }
 
-        return view('staff.users.index', compact('users'));
+        // Nombres de rol de cada vínculo usuario-empresa (pivot company_user.role_id), en una sola consulta.
+        $roleIds = $users->getCollection()->flatMap(fn ($u) => $u->companies->pluck('pivot.role_id'))->filter()->unique();
+        $roles = Role::whereIn('id', $roleIds)->pluck('name', 'id');
+
+        return view('staff.users.index', [
+            'users'          => $users,
+            'roles'          => $roles,
+            'currentCompany' => $user->is_super_admin ? null : $user->getCurrentCompany(),
+        ]);
     }
 
     public function create()
