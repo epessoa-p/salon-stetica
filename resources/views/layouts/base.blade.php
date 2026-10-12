@@ -15,6 +15,12 @@
             --danger-color: #dc3545;
         }
 
+        /* Escala base del sistema: 14px en lugar de los 16px del navegador.
+           Todo lo que Bootstrap define en rem se reduce proporcionalmente. */
+        html {
+            font-size: 14px;
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f5f7fa;
@@ -99,7 +105,7 @@
         }
 
         .stat-card .number {
-            font-size: 2.5rem;
+            font-size: 1.75rem;
             font-weight: 700;
             color: var(--primary-color);
         }
@@ -134,10 +140,117 @@
         }
 
         .badge {
-            padding: 6px 12px;
+            padding: 3px 8px;
             border-radius: 20px;
-            font-size: 0.8rem;
+            font-size: 0.72rem;
             font-weight: 600;
+        }
+
+        /* ───────────────────────────────────────────────────────────────
+           Escala compacta
+           Ajusta lo que no se reduce solo al bajar la base a 14px: valores
+           en px fijos y espaciados escritos en el HTML de las vistas.
+           ─────────────────────────────────────────────────────────────── */
+
+        /* Títulos de página (los usan ~69 vistas con <h1>) */
+        .app-main h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.15rem;
+        }
+
+        .app-main h1 .bi {
+            font-size: 1.25rem;
+        }
+
+        .app-main h1 + p {
+            font-size: 0.85rem;
+        }
+
+        .app-main h2 { font-size: 1.3rem; }
+        .app-main h3 { font-size: 1.15rem; }
+
+        /* Tablas: filas más bajas y encabezado discreto.
+           Se ajustan las variables de Bootstrap para no romper .table-sm. */
+        .table {
+            --bs-table-cell-padding-y: 0.4rem;
+            --bs-table-cell-padding-x: 0.6rem;
+            font-size: 0.875rem;
+        }
+
+        .table-sm {
+            --bs-table-cell-padding-y: 0.25rem;
+            --bs-table-cell-padding-x: 0.4rem;
+        }
+
+        .table thead th {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+
+        /* Botones */
+        .btn {
+            font-size: 0.875rem;
+            padding: 0.35rem 0.7rem;
+            border-radius: 6px;
+        }
+
+        .btn-sm {
+            font-size: 0.78rem;
+            padding: 0.2rem 0.45rem;
+        }
+
+        .btn-lg {
+            font-size: 0.95rem;
+            padding: 0.5rem 1rem;
+        }
+
+        /* Formularios */
+        .form-control,
+        .form-select {
+            font-size: 0.875rem;
+            padding: 0.35rem 0.6rem;
+        }
+
+        .form-control-sm,
+        .form-select-sm {
+            font-size: 0.8rem;
+            padding: 0.2rem 0.45rem;
+        }
+
+        .form-label {
+            font-size: 0.82rem;
+            margin-bottom: 0.25rem;
+        }
+
+        /* Tarjetas: varias vistas traen p-4 escrito en el HTML */
+        .card {
+            margin-bottom: 1rem;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+        }
+
+        .card-body {
+            padding: 1rem;
+        }
+
+        .card-body.p-4 {
+            padding: 1rem !important;
+        }
+
+        .card-header {
+            padding: 0.75rem 1rem;
+        }
+
+        .alert {
+            padding: 0.6rem 0.9rem;
+            font-size: 0.875rem;
+        }
+
+        .nav-tabs .nav-link {
+            font-size: 0.875rem;
+            padding: 0.4rem 0.8rem;
         }
 
         @media (max-width: 768px) {

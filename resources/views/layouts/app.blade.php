@@ -105,8 +105,11 @@
                             : ($authUser->personal?->cargo?->name ?? 'Sin cargo');
                     @endphp
                     <span class="topbar-label"><i class="bi bi-person-badge me-1"></i>{{ $userCargo }}</span>
-                    <span class="topbar-separator">|</span>
-                    <span class="text-muted small">{{ $authUser->name }}</span>
+                    {{-- El nombre solo si aporta algo: el super admin se llama igual que su cargo --}}
+                    @if($authUser->name !== $userCargo)
+                        <span class="topbar-separator">|</span>
+                        <span class="text-muted small">{{ $authUser->name }}</span>
+                    @endif
 
                     @if(!auth()->user()->is_super_admin && $activeCompanies->count() > 1)
                         <div class="dropdown">
@@ -206,13 +209,13 @@
     }
 
     .app-sidebar {
-        width: 250px;
-        flex: 0 0 250px;
+        width: 220px;
+        flex: 0 0 220px;
         background: var(--company-nav-grad);
         color: var(--company-nav-text);
         border-right: 1px solid color-mix(in srgb, var(--company-nav-text) 12%, transparent);
         box-shadow: inset -8px 0 20px -18px rgba(0, 0, 0, 0.5);
-        padding: 12px 10px 24px;
+        padding: 10px 8px 20px;
         position: sticky;
         top: 0;
         /* align-self evita que flex estire el elemento y rompa el sticky */
@@ -250,15 +253,15 @@
     .sidebar-brand {
         display: flex;
         align-items: center;
-        gap: 10px;
-        margin-bottom: 18px;
-        padding: 10px 8px 14px;
+        gap: 8px;
+        margin-bottom: 12px;
+        padding: 6px 6px 10px;
         border-bottom: 1px solid color-mix(in srgb, var(--company-nav-text) 15%, transparent);
     }
 
     .brand-icon {
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
         border-radius: 8px;
         display: grid;
         place-items: center;
@@ -269,9 +272,9 @@
     }
 
     .brand-logo {
-        width: 38px;
-        height: 38px;
-        border-radius: 8px;
+        width: 32px;
+        height: 32px;
+        border-radius: 7px;
         overflow: hidden;
         flex-shrink: 0;
         background: #fff;
@@ -298,10 +301,14 @@
 
     .brand-title {
         font-weight: 700;
-        font-size: 0.9rem;
+        font-size: 0.82rem;
         letter-spacing: 0.02em;
         line-height: 1.15;
         color: var(--company-nav-text);
+    }
+
+    .sidebar-brand small {
+        font-size: 0.68rem;
     }
 
     .app-shell .app-sidebar .brand-title {
@@ -314,17 +321,17 @@
 
     .sidebar-section-title {
         color: color-mix(in srgb, var(--company-nav-text) 60%, transparent);
-        font-size: 0.75rem;
+        font-size: 0.68rem;
         font-weight: 700;
         text-transform: none;
         letter-spacing: 0;
-        padding: 2px 10px 6px;
+        padding: 2px 8px 4px;
     }
 
     /* Secciones del menú tipo tarjeta con color (una por sección vía --sec) */
     .nav-section {
-        margin: 0 2px 10px;
-        border-radius: 12px;
+        margin: 0 2px 6px;
+        border-radius: 9px;
         overflow: hidden;
         background: #ffffff;
         border: 1px solid color-mix(in srgb, var(--sec) 22%, transparent);
@@ -338,8 +345,8 @@
         justify-content: space-between;
         gap: 8px;
         border: 0;
-        padding: 11px 13px;
-        font-size: 0.74rem;
+        padding: 7px 10px;
+        font-size: 0.7rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.04em;
@@ -379,13 +386,13 @@
     }
 
     .nav-section-items {
-        padding: 6px;
+        padding: 4px;
         margin: 0;
     }
 
     .nav-section .app-link {
         color: #4b5563;
-        padding: 8px 10px;
+        padding: 5px 8px;
     }
 
     .nav-section .app-link i {
@@ -427,23 +434,23 @@
     }
 
     .nav-badge {
-        font-size: 0.6rem;
+        font-size: 0.55rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.03em;
         color: #9ca3af;
         background: #eef0f2;
         border-radius: 10px;
-        padding: 2px 7px;
+        padding: 1px 5px;
     }
 
     .app-link {
         position: relative;
-        border-radius: 8px;
-        padding: 9px 12px;
+        border-radius: 6px;
+        padding: 6px 9px;
         color: color-mix(in srgb, var(--company-nav-text) 82%, transparent);
         border: 1px solid transparent;
-        font-size: 0.88rem;
+        font-size: 0.82rem;
         transition: all 0.18s ease;
     }
 
@@ -486,7 +493,9 @@
 
     .app-main {
         flex: 1;
-        padding: 14px 18px 24px;
+        /* Los márgenes negativos de .app-topbar dependen de este padding */
+        padding: 12px 16px 20px;
+        min-width: 0;
     }
 
     .app-topbar {
@@ -494,16 +503,17 @@
         color: var(--company-header-text);
         border: 0;
         border-radius: 0;
-        padding: 10px 16px;
-        margin-left: -18px;
-        margin-right: -18px;
-        margin-top: -14px;
+        padding: 6px 12px;
+        margin-left: -16px;
+        margin-right: -16px;
+        margin-top: -12px;
+        margin-bottom: 1rem !important;
         box-shadow: 0 4px 18px -6px rgba(0, 0, 0, 0.35);
     }
 
     .topbar-label {
         color: var(--company-header-text);
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         font-weight: 500;
     }
 
@@ -527,9 +537,9 @@
     }
 
     .btn-icon {
-        width: 34px;
-        height: 34px;
-        border-radius: 8px;
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
         border: 1px solid color-mix(in srgb, var(--company-header-text) 25%, transparent);
         background: color-mix(in srgb, var(--company-header-text) 14%, transparent);
         color: var(--company-header-text);
@@ -547,9 +557,9 @@
         border: 1px solid color-mix(in srgb, var(--company-header-text) 30%, transparent);
         background: color-mix(in srgb, var(--company-header-text) 14%, transparent);
         color: var(--company-header-text);
-        border-radius: 8px;
-        padding: 6px 10px;
-        font-size: 0.82rem;
+        border-radius: 7px;
+        padding: 4px 9px;
+        font-size: 0.76rem;
     }
 
     .btn-logout:hover {

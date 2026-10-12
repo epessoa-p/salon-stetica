@@ -74,7 +74,7 @@
                                         @if($m->reference)<small class="text-muted">Ref: {{ $m->reference }}</small>@endif
                                     </td>
                                     <td>{{ $m->category ?: '-' }}</td>
-                                    <td>{{ ucfirst($m->payment_method) }}</td>
+                                    <td>{{ \App\Models\PaymentMethod::label($m->payment_method) }}</td>
                                     <td>{{ $m->session?->register?->name ?? '-' }}</td>
                                     <td class="text-end fw-semibold text-{{ $color }}">{{ number_format($m->amount, 2) }}</td>
                                     <td class="text-end pe-3">

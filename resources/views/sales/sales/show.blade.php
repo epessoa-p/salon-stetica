@@ -28,7 +28,7 @@
             <div class="text-muted small">Cliente</div><div class="fw-semibold">{{ $sale->clientDisplay() }}</div>
         </div></div></div>
         <div class="col-md-4"><div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small">Método de pago</div><div class="fw-semibold">{{ ucfirst($sale->payment_method) }}</div>
+            <div class="text-muted small">Método de pago</div><div class="fw-semibold">{{ \App\Models\PaymentMethod::label($sale->payment_method) }}</div>
         </div></div></div>
         <div class="col-md-4"><div class="card border-0 shadow-sm h-100"><div class="card-body">
             <div class="text-muted small">Caja</div><div class="fw-semibold">{{ $sale->session?->register?->name ?? '—' }}</div>
@@ -56,7 +56,11 @@
                     <tfoot>
                         <tr><td colspan="4" class="text-end text-muted">Subtotal</td><td class="text-end pe-3">{{ number_format($sale->subtotal, 2) }}</td></tr>
                         <tr><td colspan="4" class="text-end text-muted">Descuento</td><td class="text-end pe-3">-{{ number_format($sale->discount, 2) }}</td></tr>
-                        <tr><td colspan="4" class="text-end fw-bold fs-5">Total</td><td class="text-end pe-3 fw-bold fs-5">{{ number_format($sale->total, 2) }}</td></tr>
+                        @php $setting = \App\Models\CompanySetting::current($sale->company_id); @endphp
+                        @if((float) $sale->tax > 0)
+                            <tr><td colspan="4" class="text-end text-muted">{{ $setting->tax_label }} ({{ rtrim(rtrim(number_format($setting->tax_rate, 2), "0"), ".") }}%){{ $setting->tax_included ? " incluido" : "" }}</td><td class="text-end pe-3">{{ number_format($sale->tax, 2) }}</td></tr>
+                        @endif
+                        <tr><td colspan="4" class="text-end fw-bold fs-5">Total</td><td class="text-end pe-3 fw-bold fs-5">{{ $setting->money($sale->total) }}</td></tr>
                     </tfoot>
                 </table>
             </div>

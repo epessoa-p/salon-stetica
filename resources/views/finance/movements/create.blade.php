@@ -43,10 +43,9 @@
                     <div class="col-md-6">
                         <label class="form-label">Metodo de pago <span class="text-danger">*</span></label>
                         <select name="payment_method" class="form-select" required>
-                            <option value="efectivo">Efectivo</option>
-                            <option value="tarjeta">Tarjeta</option>
-                            <option value="transferencia">Transferencia</option>
-                            <option value="qr">QR</option>
+                            @foreach(\App\Models\PaymentMethod::optionsFor() as $code => $label)
+                                <option value="{{ $code }}" {{ old('payment_method') === $code ? 'selected' : '' }}>{{ $label }}</option>
+                            @endforeach
                         </select>
                     </div>
                     <div class="col-md-6">

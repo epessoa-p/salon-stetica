@@ -49,6 +49,14 @@
             ],
         ],
         [
+            'label' => 'Comisiones',
+            'icon'  => 'bi-percent',
+            'color' => '#0ea5a4',
+            'items' => [
+                ['label' => 'Comisiones', 'icon' => 'bi-percent', 'built' => true, 'route' => 'commissions.index', 'pattern' => 'commissions.*'],
+            ],
+        ],
+        [
             'label' => 'Inventario',
             'icon'  => 'bi-box-seam',
             'color' => '#f59e0b',
@@ -68,18 +76,6 @@
                 ['label' => 'Órdenes',      'icon' => 'bi-file-earmark-plus', 'built' => true, 'route' => 'purchase-orders.index',      'pattern' => 'purchase-orders.index'],
                 ['label' => 'Recepciones',  'icon' => 'bi-box-arrow-in-down', 'built' => true, 'route' => 'purchase-orders.receptions', 'pattern' => 'purchase-orders.receptions'],
                 ['label' => 'Devoluciones', 'icon' => 'bi-arrow-return-left', 'built' => false],
-            ],
-        ],
-        [
-            'label' => 'Personal',
-            'icon'  => 'bi-person-badge',
-            'color' => '#0ea5a4',
-            'items' => [
-                ['label' => 'Empleados',   'icon' => 'bi-person-vcard',    'built' => true, 'route' => 'personal.index', 'pattern' => 'personal.*'],
-                ['label' => 'Cargos',      'icon' => 'bi-briefcase',       'built' => true, 'route' => 'cargos.index',   'pattern' => 'cargos.*'],
-                ['label' => 'Horarios',    'icon' => 'bi-clock',           'built' => false],
-                ['label' => 'Comisiones',  'icon' => 'bi-percent',         'built' => true, 'route' => 'commissions.index', 'pattern' => 'commissions.*'],
-                ['label' => 'Asistencia',  'icon' => 'bi-calendar2-check', 'built' => false],
             ],
         ],
         [
@@ -121,20 +117,26 @@
             'color' => '#64748b',
             'items' => [
                 ['label' => 'Sucursales',       'icon' => 'bi-diagram-2',            'built' => true, 'route' => 'branches.index', 'pattern' => 'branches.*'],
-                ['label' => 'Usuarios',         'icon' => 'bi-person-gear',           'built' => true, 'route' => 'users.index', 'pattern' => 'users.*', 'visible' => $u->hasPermissionInCompany('users.view', $co)],
-                ['label' => 'Roles',            'icon' => 'bi-shield-lock',           'built' => true, 'route' => 'roles.index', 'pattern' => 'roles.*', 'visible' => $u->is_super_admin],
-                ['label' => 'Métodos de pago',  'icon' => 'bi-credit-card-2-front',  'built' => false],
-                ['label' => 'Preferencias',     'icon' => 'bi-sliders',              'built' => false],
+                ['label' => 'Empleados',        'icon' => 'bi-person-vcard',         'built' => true, 'route' => 'personal.index', 'pattern' => 'personal.*'],
+                ['label' => 'Cargos',           'icon' => 'bi-briefcase',            'built' => true, 'route' => 'cargos.index',   'pattern' => 'cargos.*'],
+                ['label' => 'Horarios',         'icon' => 'bi-clock',                'built' => false],
+                ['label' => 'Asistencia',       'icon' => 'bi-calendar2-check',      'built' => false],
+                ['label' => 'Métodos de pago',  'icon' => 'bi-credit-card-2-front',  'built' => true, 'route' => 'payment-methods.index', 'pattern' => 'payment-methods.*'],
+                ['label' => 'Preferencias',     'icon' => 'bi-sliders',              'built' => true, 'route' => 'settings.edit', 'pattern' => 'settings.*'],
             ],
         ],
         [
-            'label' => 'Sistema',
-            'icon'  => 'bi-hdd-stack',
-            'color' => '#7c4dff',
-            'items' => [
-                ['label' => 'Empresas',      'icon' => 'bi-building',       'built' => true, 'route' => 'companies.index',    'pattern' => 'companies.*',    'visible' => $u->is_super_admin],
-                ['label' => 'Planes',        'icon' => 'bi-box-seam',       'built' => true, 'route' => 'plans.index',        'pattern' => 'plans.*',        'visible' => $u->is_super_admin],
-                ['label' => 'Suscripciones', 'icon' => 'bi-card-checklist', 'built' => true, 'route' => 'subscriptions.index', 'pattern' => 'subscriptions.*', 'visible' => $u->is_super_admin],
+            // Sección del operador del SaaS: se muestra completa solo al super admin.
+            'label'   => 'Plataforma',
+            'icon'    => 'bi-hdd-stack',
+            'color'   => '#7c4dff',
+            'visible' => (bool) $u->is_super_admin,
+            'items'   => [
+                ['label' => 'Empresas',      'icon' => 'bi-building',       'built' => true, 'route' => 'companies.index',     'pattern' => 'companies.*'],
+                ['label' => 'Planes',        'icon' => 'bi-box-seam',       'built' => true, 'route' => 'plans.index',         'pattern' => 'plans.*'],
+                ['label' => 'Suscripciones', 'icon' => 'bi-card-checklist', 'built' => true, 'route' => 'subscriptions.index',  'pattern' => 'subscriptions.*'],
+                ['label' => 'Roles',         'icon' => 'bi-shield-lock',    'built' => true, 'route' => 'roles.index',          'pattern' => 'roles.*'],
+                ['label' => 'Usuarios',      'icon' => 'bi-person-gear',    'built' => true, 'route' => 'users.index',          'pattern' => 'users.*'],
             ],
         ],
     ];
@@ -153,6 +155,9 @@
 {{-- Secciones colapsables --}}
 @foreach($sections as $section)
     @php
+        // Visibilidad explícita de la sección completa (p. ej. Plataforma: solo super admin).
+        if (array_key_exists('visible', $section) && !$section['visible']) continue;
+
         // Oculta la sección si su módulo no está incluido en el plan (super admin siempre ve).
         $sectionModule = [
             'Clientes' => 'crm', 'Agenda' => 'scheduling', 'Servicios' => 'catalog', 'Ventas' => 'sales',

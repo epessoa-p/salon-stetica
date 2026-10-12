@@ -63,7 +63,7 @@
                                 @forelse($session->movements as $m)
                                     <tr>
                                         <td class="ps-3">{{ $m->concept }}<br><small class="text-muted">{{ $m->created_at->format('d/m H:i') }}</small></td>
-                                        <td>{{ ucfirst($m->payment_method) }}</td>
+                                        <td>{{ \App\Models\PaymentMethod::label($m->payment_method) }}</td>
                                         <td class="text-end pe-3 fw-semibold {{ $m->type === 'ingreso' ? 'text-success' : 'text-danger' }}">
                                             {{ $m->type === 'ingreso' ? '+' : '-' }}{{ number_format($m->amount, 2) }}
                                         </td>
@@ -104,10 +104,9 @@
                             <div class="mb-3">
                                 <label class="form-label small">Método</label>
                                 <select name="payment_method" class="form-select">
-                                    <option value="efectivo">Efectivo</option>
-                                    <option value="tarjeta">Tarjeta</option>
-                                    <option value="transferencia">Transferencia</option>
-                                    <option value="qr">QR</option>
+                                    @foreach(\App\Models\PaymentMethod::optionsFor() as $code => $label)
+                                        <option value="{{ $code }}">{{ $label }}</option>
+                                    @endforeach
                                 </select>
                             </div>
                             <button class="btn btn-outline-primary w-100" type="submit">Agregar movimiento</button>

@@ -104,10 +104,9 @@
                             <div class="mb-2">
                                 <label class="form-label small">Método de pago <span class="text-danger">*</span></label>
                                 <select name="payment_method" class="form-select" required>
-                                    <option value="efectivo">Efectivo</option>
-                                    <option value="tarjeta">Tarjeta</option>
-                                    <option value="transferencia">Transferencia</option>
-                                    <option value="qr">QR</option>
+                                    @foreach($paymentMethods as $code => $label)
+                                        <option value="{{ $code }}" @selected($defaultPaymentMethod === $code)>{{ $label }}</option>
+                                    @endforeach
                                 </select>
                             </div>
                             <div class="mb-2">
@@ -124,8 +123,14 @@
                                 <span class="text-muted">Descuento global</span>
                                 <input type="number" step="0.01" min="0" name="global_discount" id="global-discount" class="form-control form-control-sm text-end no-uppercase" style="width:110px" value="0">
                             </div>
+                            @if((float) $setting->tax_rate > 0)
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">{{ $setting->tax_label }} ({{ rtrim(rtrim(number_format($setting->tax_rate, 2), '0'), '.') }}%){{ $setting->tax_included ? ' incl.' : '' }}</span>
+                                    <span id="lbl-tax">0.00</span>
+                                </div>
+                            @endif
                             <hr>
-                            <div class="d-flex justify-content-between mb-3"><span class="fw-bold fs-5">Total</span><span class="fw-bold fs-5" id="lbl-total">0.00</span></div>
+                            <div class="d-flex justify-content-between mb-3"><span class="fw-bold fs-5">Total</span><span class="fw-bold fs-5"><small class="text-muted me-1">{{ $setting->currency_symbol }}</small><span id="lbl-total">0.00</span></span></div>
                             <button class="btn btn-success w-100 btn-lg" type="submit"><i class="bi bi-cash-coin"></i> Cobrar</button>
                         </div>
                     </div>
@@ -141,6 +146,8 @@
 <script>
 (function () {
     var SPECIALIST_OPTIONS = @json($specialistOptions);
+    var TAX_RATE = {{ (float) $setting->tax_rate }};
+    var TAX_INCLUDED = {{ $setting->tax_included ? 'true' : 'false' }};
     var idx = 0;
     var picker = document.getElementById('service-picker');
     var body = document.getElementById('items-body');
@@ -161,8 +168,19 @@
             lineDisc += disc;
         });
         var gd = parseFloat(globalDiscount.value) || 0;
-        var total = Math.max(0, subtotal - lineDisc - gd);
+        var gravado = Math.max(0, subtotal - lineDisc - gd);
+
+        var tax = 0;
+        if (TAX_RATE > 0) {
+            tax = TAX_INCLUDED
+                ? gravado - (gravado / (1 + TAX_RATE / 100))
+                : gravado * TAX_RATE / 100;
+        }
+        var total = TAX_INCLUDED ? gravado : gravado + tax;
+
         document.getElementById('lbl-subtotal').textContent = money(subtotal);
+        var taxLabel = document.getElementById('lbl-tax');
+        if (taxLabel) taxLabel.textContent = money(tax);
         document.getElementById('lbl-total').textContent = money(total);
     }
 

@@ -36,7 +36,7 @@
                                     <td class="ps-3 fw-semibold">{{ $sale->sale_number }}</td>
                                     <td>{{ optional($sale->sale_date)->format('d/m/Y H:i') }}</td>
                                     <td>{{ $sale->clientDisplay() }}</td>
-                                    <td>{{ ucfirst($sale->payment_method) }}</td>
+                                    <td>{{ \App\Models\PaymentMethod::label($sale->payment_method) }}</td>
                                     <td class="text-end fw-semibold">{{ number_format($sale->total, 2) }}</td>
                                     <td class="text-center">
                                         <span class="badge {{ $sale->status === 'completada' ? 'bg-success' : 'bg-danger' }}">{{ ucfirst($sale->status) }}</span>

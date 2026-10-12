@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Crm;
 
 use App\Http\Controllers\Controller;
+use App\Models\Appointment;
 use App\Models\Client;
+use App\Models\CompanySetting;
 use App\Models\Company;
+use App\Models\Sale;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -74,7 +77,78 @@ class ClientController extends Controller
         $this->authorizeClient($client);
         $client->load('company');
 
-        return view('crm.clients.show', compact('client'));
+        return view('crm.clients.show', ['client' => $client] + $this->history($client));
+    }
+
+    /**
+     * Historial del cliente: citas y ventas, más los indicadores que resumen
+     * su relación con el salón. Cada bloque se consulta solo si el plan
+     * incluye el módulo y el usuario tiene permiso de verlo.
+     */
+    protected function history(Client $client): array
+    {
+        $user = auth()->user();
+        $company = $client->company;
+
+        $can = function (string $feature, string $permission) use ($user, $company): bool {
+            if ($user->is_super_admin) {
+                return true;
+            }
+
+            return $company
+                && $company->planAllows($feature)
+                && $user->hasPermissionInCompany($permission, $company);
+        };
+
+        $showAppointments = $can('scheduling', 'appointments.view');
+        $showSales = $can('sales', 'sales.view');
+
+        $appointments = $showAppointments
+            ? Appointment::with(['service', 'specialist'])
+                ->where('client_id', $client->id)
+                ->orderByDesc('starts_at')
+                ->limit(50)
+                ->get()
+            : collect();
+
+        $sales = $showSales
+            ? Sale::with('items.service')
+                ->where('client_id', $client->id)
+                ->orderByDesc('sale_date')
+                ->limit(50)
+                ->get()
+            : collect();
+
+        // Indicadores: solo se cuentan las ventas no anuladas.
+        $paidSales = $sales->where('status', '!=', 'anulada');
+        $doneAppointments = $appointments->where('status', 'completada');
+
+        $topService = $doneAppointments->filter(fn ($a) => $a->service)
+            ->groupBy('service_id')
+            ->sortByDesc->count()
+            ->first();
+
+        $lastVisit = collect([
+            $doneAppointments->max('starts_at'),
+            $paidSales->max('sale_date'),
+        ])->filter()->max();
+
+        return [
+            'appointments'     => $appointments,
+            'sales'            => $sales,
+            'showAppointments' => $showAppointments,
+            'showSales'        => $showSales,
+            'setting'          => CompanySetting::current($client->company_id),
+            'stats'            => [
+                'visitas'     => $doneAppointments->count(),
+                'compras'     => $paidSales->count(),
+                'gastado'     => (float) $paidSales->sum('total'),
+                'ticket'      => $paidSales->count() ? (float) $paidSales->sum('total') / $paidSales->count() : 0.0,
+                'ultima'      => $lastVisit,
+                'canceladas'  => $appointments->whereIn('status', ['cancelada', 'no_show'])->count(),
+                'favorito'    => $topService?->first()?->service?->name,
+            ],
+        ];
     }
 
     public function edit(Client $client)

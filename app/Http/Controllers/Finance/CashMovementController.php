@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\CashMovement;
 use App\Models\CashSession;
+use App\Models\PaymentMethod;
 use Illuminate\Http\Request;
 
 /**
@@ -76,7 +77,7 @@ class CashMovementController extends Controller
             'concept'         => ['required', 'string', 'max:255'],
             'category'        => ['nullable', 'string', 'max:100'],
             'movement_date'   => ['required', 'date'],
-            'payment_method'  => ['required', 'string', 'max:30'],
+            'payment_method'  => ['required', 'string', 'max:30', 'in:' . implode(',', array_keys(PaymentMethod::optionsFor()))],
             'reference'       => ['nullable', 'string', 'max:255'],
             'cash_session_id' => ['nullable', 'exists:cash_sessions,id'],
         ]);

@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\CashSession;
 use App\Models\Commission;
+use App\Models\CompanySetting;
 use App\Models\Client;
+use App\Models\PaymentMethod;
 use App\Models\Personal;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -49,8 +51,13 @@ class SaleController extends Controller
             return view('sales.pos', ['noCompany' => true]);
         }
 
+        $setting = CompanySetting::current($companyId);
+
         return view('sales.pos', [
             'noCompany' => false,
+            'paymentMethods' => PaymentMethod::optionsFor($companyId),
+            'defaultPaymentMethod' => PaymentMethod::defaultCodeFor($companyId),
+            'setting' => $setting,
             'clients' => Client::where('company_id', $companyId)->where('active', true)->orderBy('full_name')->get(),
             'services' => Service::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(),
             'branches' => Branch::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(),
@@ -75,7 +82,7 @@ class SaleController extends Controller
             'client_name'     => ['nullable', 'string', 'max:255'],
             'branch_id'       => ['nullable', 'exists:branches,id'],
             'cash_session_id' => ['nullable', 'exists:cash_sessions,id'],
-            'payment_method'  => ['required', 'string', 'max:50'],
+            'payment_method'  => ['required', 'string', 'max:50', 'in:' . implode(',', array_keys(PaymentMethod::optionsFor($companyId)))],
             'global_discount' => ['nullable', 'numeric', 'min:0'],
             'notes'           => ['nullable', 'string'],
             'items'           => ['required', 'array', 'min:1'],
@@ -86,6 +93,13 @@ class SaleController extends Controller
             'items.*.discount'    => ['nullable', 'numeric', 'min:0'],
             'items.*.personal_id' => ['nullable', 'exists:personals,id'],
         ]);
+
+        // Preferencia: exigir una caja abierta para poder cobrar.
+        if (CompanySetting::current($companyId)->require_cash_session && empty($validated['cash_session_id'])) {
+            return back()->withInput()->withErrors([
+                'cash_session_id' => 'Las preferencias de la empresa exigen registrar la venta en una caja abierta.',
+            ]);
+        }
 
         // Cada línea debe tener servicio o descripción.
         foreach ($validated['items'] as $i => $item) {
@@ -122,7 +136,12 @@ class SaleController extends Controller
 
                 $globalDiscount = (float) ($validated['global_discount'] ?? 0);
                 $totalDiscount = $lineDiscounts + $globalDiscount;
-                $total = max(0, $subtotal - $totalDiscount);
+                $gravado = max(0, $subtotal - $totalDiscount);
+
+                // Impuesto segun las preferencias de la empresa.
+                $setting = CompanySetting::current($companyId);
+                $tax = $setting->taxOn($gravado);
+                $total = $setting->tax_included ? $gravado : $gravado + $tax;
 
                 // Sesión de caja (opcional): debe estar abierta y ser de la empresa.
                 $session = null;
@@ -144,7 +163,7 @@ class SaleController extends Controller
                     'client_name'     => $validated['client_name'] ?? null,
                     'sale_date'       => now(),
                     'subtotal'        => $subtotal,
-                    'tax'             => 0,
+                    'tax'             => $tax,
                     'discount'        => $totalDiscount,
                     'total'           => $total,
                     'payment_method'  => $validated['payment_method'],
@@ -250,7 +269,8 @@ class SaleController extends Controller
     protected function nextSaleNumber(int $companyId): string
     {
         $count = Sale::withTrashed()->where('company_id', $companyId)->count() + 1;
-        return 'V-' . str_pad((string) $count, 6, '0', STR_PAD_LEFT);
+
+        return CompanySetting::current($companyId)->folio($count);
     }
 
     protected function authorizeSale(Sale $sale): void

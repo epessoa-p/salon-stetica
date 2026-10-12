@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Caja;
 use App\Models\CashMovement;
 use App\Models\CashSession;
+use App\Models\PaymentMethod;
 use Illuminate\Http\Request;
 
 class CashSessionController extends Controller
@@ -96,14 +97,14 @@ class CashSessionController extends Controller
             'type'           => ['required', 'in:ingreso,egreso'],
             'amount'         => ['required', 'numeric', 'min:0.01'],
             'concept'        => ['required', 'string', 'max:255'],
-            'payment_method' => ['nullable', 'string', 'max:50'],
+            'payment_method' => ['nullable', 'string', 'max:30', 'in:' . implode(',', array_keys(PaymentMethod::optionsFor()))],
         ]);
 
         $cashSession->movements()->create([
             'type'           => $validated['type'],
             'amount'         => $validated['amount'],
             'concept'        => $validated['concept'],
-            'payment_method' => $validated['payment_method'] ?? 'efectivo',
+            'payment_method' => $validated['payment_method'] ?? PaymentMethod::defaultCodeFor(),
             'created_by'     => auth()->id(),
         ]);
 
