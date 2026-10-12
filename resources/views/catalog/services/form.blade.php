@@ -55,9 +55,16 @@
                         <label class="form-label">Duración (min)</label>
                         <input type="number" min="0" name="duration_minutes" class="form-control no-uppercase" value="{{ old('duration_minutes', $service?->duration_minutes) }}" placeholder="Ej: 45">
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Comisión (%)</label>
-                        <input type="number" step="0.01" min="0" max="100" name="commission_percent" class="form-control no-uppercase" value="{{ old('commission_percent', $service?->commission_percent) }}" placeholder="Ej: 10">
+                    <div class="col-md-4 d-flex align-items-end">
+                        <small class="text-muted">
+                            <i class="bi bi-percent"></i> La comisión se configura en
+                            @if(Route::has('commission-rules.index'))
+                                <a href="{{ route('commission-rules.index') }}">Comisiones › Reglas</a>,
+                            @else
+                                Comisiones › Reglas,
+                            @endif
+                            por servicio, categoría o profesional.
+                        </small>
                     </div>
 
                     <div class="col-12">

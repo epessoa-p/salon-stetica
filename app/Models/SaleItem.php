@@ -34,8 +34,18 @@ class SaleItem extends Model
         return $this->belongsTo(Service::class);
     }
 
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
     public function specialist(): BelongsTo
     {
-        return $this->belongsTo(Personal::class, "personal_id");
+        return $this->belongsTo(Personal::class, 'personal_id');
+    }
+
+    public function isProduct(): bool
+    {
+        return (int) $this->product_id > 0;
     }
 }

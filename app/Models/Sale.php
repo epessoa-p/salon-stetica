@@ -14,9 +14,9 @@ class Sale extends Model
     use BelongsToCompany, HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'company_id', 'branch_id', 'client_id', 'cash_session_id', 'sale_number',
+        'company_id', 'branch_id', 'client_id', 'personal_id', 'cash_session_id', 'sale_number',
         'client_name', 'client_phone', 'client_document', 'sale_date',
-        'subtotal', 'tax', 'discount', 'total', 'payment_method', 'status',
+        'subtotal', 'tax', 'discount', 'total', 'tip', 'tip_settlement_id', 'payment_method', 'status',
         'notes', 'created_by',
     ];
 
@@ -26,6 +26,7 @@ class Sale extends Model
         'tax' => 'decimal:2',
         'discount' => 'decimal:2',
         'total' => 'decimal:2',
+        'tip' => 'decimal:2',
         'deleted_at' => 'datetime',
     ];
 
@@ -47,6 +48,27 @@ class Sale extends Model
     public function session(): BelongsTo
     {
         return $this->belongsTo(CashSession::class, 'cash_session_id');
+    }
+
+    /** Profesional principal: recibe la propina y lo heredan las líneas sin profesional. */
+    public function specialist(): BelongsTo
+    {
+        return $this->belongsTo(Personal::class, 'personal_id');
+    }
+
+    public function tipSettlement(): BelongsTo
+    {
+        return $this->belongsTo(CommissionSettlement::class, 'tip_settlement_id');
+    }
+
+    public function commissions(): HasMany
+    {
+        return $this->hasMany(Commission::class);
+    }
+
+    public function isVoided(): bool
+    {
+        return $this->status === 'anulada';
     }
 
     public function items(): HasMany

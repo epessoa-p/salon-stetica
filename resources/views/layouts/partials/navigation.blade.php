@@ -53,7 +53,12 @@
             'icon'  => 'bi-percent',
             'color' => '#0ea5a4',
             'items' => [
-                ['label' => 'Comisiones', 'icon' => 'bi-percent', 'built' => true, 'route' => 'commissions.index', 'pattern' => 'commissions.*'],
+                ['label' => 'Comisiones',     'icon' => 'bi-percent',         'built' => true, 'route' => 'commissions.index',            'pattern' => 'commissions.index'],
+                ['label' => 'Liquidaciones',  'icon' => 'bi-journal-check',   'built' => true, 'route' => 'commission-settlements.index', 'pattern' => 'commission-settlements.*'],
+                ['label' => 'Reglas',         'icon' => 'bi-sliders',         'built' => true, 'route' => 'commission-rules.index',       'pattern' => 'commission-rules.*'],
+                // Vista propia: solo para quien tiene ficha de personal en la empresa, sin permisos.
+                ['label' => 'Mis comisiones', 'icon' => 'bi-wallet2',         'built' => true, 'route' => 'commissions.mine',             'pattern' => 'commissions.mine',
+                 'visible' => $co && \App\Models\Personal::where('company_id', $co->id)->where('user_id', $u->id)->exists()],
             ],
         ],
         [
@@ -116,8 +121,9 @@
             'icon'  => 'bi-gear',
             'color' => '#64748b',
             'items' => [
+                ['label' => 'Mi empresa',       'icon' => 'bi-shop',                 'built' => true, 'route' => 'my-company.edit', 'pattern' => 'my-company.*'],
                 ['label' => 'Sucursales',       'icon' => 'bi-diagram-2',            'built' => true, 'route' => 'branches.index', 'pattern' => 'branches.*'],
-                ['label' => 'Empleados',        'icon' => 'bi-person-vcard',         'built' => true, 'route' => 'personal.index', 'pattern' => 'personal.*'],
+                ['label' => 'Personal',         'icon' => 'bi-person-vcard',         'built' => true, 'route' => 'personal.index', 'pattern' => 'personal.*'],
                 ['label' => 'Cargos',           'icon' => 'bi-briefcase',            'built' => true, 'route' => 'cargos.index',   'pattern' => 'cargos.*'],
                 ['label' => 'Horarios',         'icon' => 'bi-clock',                'built' => false],
                 ['label' => 'Asistencia',       'icon' => 'bi-calendar2-check',      'built' => false],
@@ -162,6 +168,7 @@
         $sectionModule = [
             'Clientes' => 'crm', 'Agenda' => 'scheduling', 'Servicios' => 'catalog', 'Ventas' => 'sales',
             'Inventario' => 'inventory', 'Compras' => 'purchasing', 'Caja y Finanzas' => 'finance', 'Marketing' => 'marketing',
+            'Comisiones' => 'commissions',
         ][$section['label']] ?? null;
         if ($sectionModule && !$u->is_super_admin && !($co && $co->planAllows($sectionModule))) continue;
 
@@ -172,7 +179,7 @@
             if (array_key_exists('visible', $i)) return (bool) $i['visible'];
             // Deriva el permiso <módulo>.view desde el nombre de ruta.
             $module = \Illuminate\Support\Str::before($i['route'] ?? '', '.');
-            $module = ['purchase-orders' => 'purchases', 'cash-sessions' => 'cash'][$module] ?? $module;
+            $module = ['purchase-orders' => 'purchases', 'cash-sessions' => 'cash', 'commission-settlements' => 'commissions'][$module] ?? $module;
             return $u->is_super_admin || ($co && $u->hasPermissionInCompany($module . '.view', $co));
         });
         if (empty($items)) continue;

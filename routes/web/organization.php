@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Organization\BranchController;
+use App\Http\Controllers\Organization\MyCompanyController;
 use App\Http\Controllers\Organization\PaymentMethodController;
 use App\Http\Controllers\Organization\SettingController;
 use Illuminate\Support\Facades\Route;
@@ -33,4 +34,11 @@ Route::prefix('admin/settings')->name('settings.')
     ->middleware('check-permission:settings.view')->group(function () {
         Route::get('/', [SettingController::class, 'edit'])->name('edit');
         Route::put('/', [SettingController::class, 'update'])->name('update')->middleware('check-permission:settings.edit');
+    });
+
+// Mi empresa (datos de la propia empresa, sin pasar por Plataforma)
+Route::prefix('admin/my-company')->name('my-company.')
+    ->middleware('check-permission:my-company.view')->group(function () {
+        Route::get('/', [MyCompanyController::class, 'edit'])->name('edit');
+        Route::put('/', [MyCompanyController::class, 'update'])->name('update')->middleware('check-permission:my-company.edit');
     });

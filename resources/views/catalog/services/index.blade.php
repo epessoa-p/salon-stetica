@@ -34,7 +34,6 @@
                             <th>Categoría</th>
                             <th class="text-end">Precio</th>
                             <th class="text-center">Duración</th>
-                            <th class="text-center">Comisión</th>
                             @if(auth()->user()->is_super_admin)
                                 <th>Empresa</th>
                             @endif
@@ -52,7 +51,6 @@
                                 <td>{{ $service->category?->name ?? '—' }}</td>
                                 <td class="text-end fw-semibold">{{ number_format($service->price, 2) }}</td>
                                 <td class="text-center">{{ $service->duration_minutes ? $service->duration_minutes.' min' : '—' }}</td>
-                                <td class="text-center">{{ $service->commission_percent !== null ? rtrim(rtrim(number_format($service->commission_percent, 2), '0'), '.').'%' : '—' }}</td>
                                 @if(auth()->user()->is_super_admin)
                                     <td>{{ $service->company?->name ?? '-' }}</td>
                                 @endif
@@ -69,7 +67,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="{{ auth()->user()->is_super_admin ? 8 : 7 }}" class="text-center py-5 text-muted">
+                            <tr><td colspan="{{ auth()->user()->is_super_admin ? 7 : 6 }}" class="text-center py-5 text-muted">
                                 {{ $search ? 'No se encontraron servicios.' : 'No hay servicios registrados.' }}
                             </td></tr>
                         @endforelse

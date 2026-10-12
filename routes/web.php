@@ -33,6 +33,7 @@ Route::middleware('auth')->group(function () {
         Route::middleware('plan:inventory')->group(fn () => require __DIR__.'/web/inventory.php');
         Route::middleware('plan:purchasing')->group(fn () => require __DIR__.'/web/purchasing.php');
         Route::middleware('plan:finance')->group(fn () => require __DIR__.'/web/finance.php');
+        Route::middleware('plan:commissions')->group(fn () => require __DIR__.'/web/commissions.php');
 
         // Administrativos / datos maestros (siempre disponibles, sin plan:).
         require __DIR__.'/web/system.php';

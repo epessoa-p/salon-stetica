@@ -133,7 +133,6 @@ class ServiceController extends Controller
             'description'         => ['nullable', 'string'],
             'price'               => ['required', 'numeric', 'min:0'],
             'duration_minutes'    => ['nullable', 'integer', 'min:0'],
-            'commission_percent'  => ['nullable', 'numeric', 'min:0', 'max:100'],
             'active'              => ['nullable', 'boolean'],
         ]);
     }

@@ -20,6 +20,7 @@ class Plan extends Model
         'inventory'  => 'Inventario',
         'purchasing' => 'Compras',
         'finance'    => 'Caja y Finanzas',
+        'commissions' => 'Comisiones',
         'marketing'  => 'Marketing',
     ];
 
@@ -36,6 +37,7 @@ class Plan extends Model
         'products' => 'inventory', 'product-categories' => 'inventory', 'brands' => 'inventory', 'stock' => 'inventory',
         'suppliers' => 'purchasing', 'purchases' => 'purchasing',
         'cash' => 'finance', 'cajas' => 'finance', 'incomes' => 'finance', 'expenses' => 'finance',
+        'commissions' => 'commissions', 'commission-rules' => 'commissions',
         'marketing' => 'marketing',
         // 'company','users','roles','branches','cargos','personal','reports',
         // 'plans','subscriptions','payments' → administrativos = siempre disponibles.
