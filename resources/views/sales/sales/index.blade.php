@@ -37,9 +37,13 @@
                                     <td>{{ optional($sale->sale_date)->format('d/m/Y H:i') }}</td>
                                     <td>{{ $sale->clientDisplay() }}</td>
                                     <td>{{ \App\Models\PaymentMethod::label($sale->payment_method) }}</td>
-                                    <td class="text-end fw-semibold">{{ number_format($sale->total, 2) }}</td>
+                                    <td class="text-end fw-semibold">
+                                        {{ number_format($sale->total, 2) }}
+                                        @if((float) $sale->returned_total > 0)<div class="small text-warning-emphasis fw-normal">−{{ number_format($sale->returned_total, 2) }} devuelto</div>@endif
+                                    </td>
                                     <td class="text-center">
                                         <span class="badge {{ $sale->status === 'completada' ? 'bg-success' : 'bg-danger' }}">{{ ucfirst($sale->status) }}</span>
+                                        @if((float) $sale->returned_total > 0)<span class="badge bg-warning text-dark">Devolución</span>@endif
                                     </td>
                                     <td class="text-end pe-3">
                                         <a href="{{ route('sales.show', $sale) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i> Ver</a>

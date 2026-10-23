@@ -38,4 +38,14 @@ class Client extends Model
     {
         return $this->hasMany(LoyaltyMovement::class);
     }
+
+    public function packages(): HasMany
+    {
+        return $this->hasMany(ClientPackage::class);
+    }
+
+    public function creditMovements(): HasMany
+    {
+        return $this->hasMany(ClientCreditMovement::class);
+    }
 }

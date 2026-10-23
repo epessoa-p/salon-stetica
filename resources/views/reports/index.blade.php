@@ -51,7 +51,7 @@
         {{-- KPIs --}}
         <div class="row g-3 mb-4">
             @foreach($report['kpis'] ?? [] as $kpi)
-                <div class="col-xl-4 col-md-6">
+                <div class="col-xl col-md-6">
                     <div class="kpi-card"><div class="kpi-body">
                         <div>
                             <div class="kpi-value">{{ $kpi['value'] }}</div>

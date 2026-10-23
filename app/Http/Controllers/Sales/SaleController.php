@@ -5,14 +5,19 @@ namespace App\Http\Controllers\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\CashSession;
 use App\Models\CompanySetting;
-use App\Models\InventoryMovement;
 use App\Models\MembershipPlan;
 use App\Models\Product;
+use App\Models\Quote;
 use App\Models\Sale;
+use App\Models\ServicePackage;
 use App\Services\CheckoutService;
 use App\Services\CommissionService;
+use App\Services\CreditService;
 use App\Services\LoyaltyService;
 use App\Services\MembershipService;
+use App\Services\PackageService;
+use App\Services\SaleReturnService;
+use App\Services\StockService;
 use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +34,9 @@ class SaleController extends Controller
         protected CommissionService $commissions,
         protected MembershipService $memberships,
         protected LoyaltyService $loyalty,
+        protected PackageService $packages,
+        protected CreditService $credit,
+        protected StockService $stock,
     ) {
     }
 
@@ -53,10 +61,14 @@ class SaleController extends Controller
         $this->authorizeSale($sale);
         $sale->load([
             'items.service', 'items.product', 'items.specialist', 'items.membershipPlan', 'items.clientMembership',
-            'client', 'session.register', 'specialist', 'tipSettlement',
+            'items.combo', 'items.servicePackage', 'items.clientPackage',
+            'client', 'session.register', 'specialist', 'tipSettlement', 'returns.creator', 'quote',
         ]);
 
-        return view('sales.sales.show', ['sale' => $sale]);
+        return view('sales.sales.show', [
+            'sale'      => $sale,
+            'canReturn' => !$sale->isVoided() && $sale->items->contains(fn ($i) => $i->returnableQuantity() > 0),
+        ]);
     }
 
     /**
@@ -111,23 +123,28 @@ class SaleController extends Controller
         if ($sale->isVoided()) {
             return back()->withErrors(['error' => 'La venta ya está anulada.']);
         }
+        if ($sale->hasReturns()) {
+            return back()->withErrors(['error' => 'La venta tiene devoluciones: ya no se puede anular. Registra una devolución por lo que falta.']);
+        }
 
-        [$reversals, $canceled] = DB::transaction(function () use ($sale) {
+        [$reversals, $canceled, $credit] = DB::transaction(function () use ($sale) {
             $sale->update(['status' => 'anulada']);
 
             $reversals = $this->commissions->reverseForVoidedSale($sale);
-            $canceled = $this->memberships->cancelForVoidedSale($sale);
+            $canceled = $this->memberships->cancelForVoidedSale($sale) + $this->packages->cancelForVoidedSale($sale);
             $this->loyalty->reverseForVoidedSale($sale);
+            $credit = $this->credit->reverseForVoidedSale($sale);
 
             foreach ($sale->items()->whereNotNull('product_id')->get() as $item) {
-                $this->moveStock((int) $item->product_id, (float) $item->quantity, 'entrada', $sale, 'Anulación venta ' . $sale->sale_number);
+                $this->stock->move((int) $item->product_id, (float) $item->quantity, 'entrada', $sale->company_id, $sale->sale_number, 'Anulación venta ' . $sale->sale_number);
             }
 
+            // Sale de caja solo lo que entró en dinero (lo pagado con saldo vuelve como saldo).
             $session = $sale->session;
-            if ($session && $session->isOpen()) {
+            if ($session && $session->isOpen() && $sale->paidInMoney() > 0) {
                 $session->movements()->create([
                     'type'           => 'egreso',
-                    'amount'         => $sale->total,
+                    'amount'         => $sale->paidInMoney(),
                     'concept'        => 'Anulación venta ' . $sale->sale_number,
                     'payment_method' => $sale->payment_method,
                     'reference'      => (string) $sale->id,
@@ -148,7 +165,7 @@ class SaleController extends Controller
                 }
             }
 
-            return [$reversals, $canceled];
+            return [$reversals, $canceled, $credit];
         });
 
         $message = 'Venta anulada.';
@@ -157,7 +174,10 @@ class SaleController extends Controller
                 . ' que se descontará en la próxima liquidación del profesional.';
         }
         if ($canceled > 0) {
-            $message .= " Se canceló {$canceled} membresía(s) vendida(s) en esta venta.";
+            $message .= " Se canceló {$canceled} membresía(s) o paquete(s) vendido(s) en esta venta.";
+        }
+        if ($credit > 0) {
+            $message .= ' El saldo a favor usado (' . number_format($credit, 2) . ') volvió al cliente.';
         }
         if ((float) $sale->tip > 0 && $sale->tip_settlement_id) {
             $message .= ' La propina ya se había pagado al profesional; regularízala con él.';
@@ -197,10 +217,13 @@ class SaleController extends Controller
             'tax'                     => $quote['tax'],
             'discount'                => round($quote['line_discounts'] + $quote['global_discount'], 2),
             'membership_discount'     => $quote['membership_discount'],
+            'package_discount'        => $quote['package_discount'],
             'loyalty_points_redeemed' => $quote['redeem_points'],
             'loyalty_discount'        => $quote['loyalty_discount'],
             'total'                   => $quote['total'],
             'tip'                     => $quote['tip'],
+            'credit_applied'          => $quote['credit_applied'],
+            'quote_id'                => $this->convertibleQuoteId($validated['quote_id'] ?? null, $companyId),
             'payment_method'          => $validated['payment_method'],
             'status'                  => 'completada',
             'notes'                   => $validated['notes'] ?? null,
@@ -208,29 +231,63 @@ class SaleController extends Controller
         ]);
 
         foreach ($quote['lines'] as $line) {
+            // Sin profesional en la línea, hereda el principal de la venta.
+            $personalId = $line['personal_id'] ?: $principalId;
+
+            // Un combo se guarda desarmado: una línea por componente.
+            if ($line['kind'] === 'combo') {
+                foreach ($line['components'] as $c) {
+                    $sale->items()->create([
+                        'service_id'  => $c['service_id'],
+                        'product_id'  => $c['product_id'],
+                        'combo_id'    => $line['combo_id'],
+                        'personal_id' => $personalId,
+                        'description' => $c['description'],
+                        'quantity'    => $c['quantity'],
+                        'unit_price'  => $c['unit_price'],
+                        'discount'    => $c['discount'],
+                        'total'       => $c['total'],
+                    ]);
+                    if ($c['product_id']) {
+                        $this->stock->move($c['product_id'], -$c['quantity'], 'salida', $companyId, $number, 'Venta ' . $number);
+                    }
+                }
+                continue;
+            }
+
             $item = $sale->items()->create([
                 'service_id'           => $line['service_id'],
                 'product_id'           => $line['product_id'],
                 'membership_plan_id'   => $line['membership_plan_id'],
+                'service_package_id'   => $line['service_package_id'],
                 'client_membership_id' => $line['client_membership_id'],
+                'client_package_id'    => $line['client_package_id'],
                 'uses_session'         => $line['uses_session'],
-                // Sin profesional en la línea, hereda el principal de la venta.
-                'personal_id'          => $line['personal_id'] ?: $principalId,
+                'personal_id'          => $personalId,
                 'description'          => $line['description'] ?: $this->lineName($line),
                 'quantity'             => $line['quantity'],
                 'unit_price'           => $line['unit_price'],
                 'discount'             => $line['discount'],
                 'membership_discount'  => $line['membership_discount'],
+                'package_discount'     => $line['package_discount'],
                 'total'                => $line['total'],
             ]);
 
             if ($line['product_id']) {
-                $this->moveStock($line['product_id'], -$line['quantity'], 'salida', $sale, 'Venta ' . $number);
+                $this->stock->move($line['product_id'], -$line['quantity'], 'salida', $companyId, $number, 'Venta ' . $number);
             }
 
             if ($line['membership_plan_id']) {
                 $this->memberships->activateFromSale($sale, $item, MembershipPlan::withoutGlobalScopes()->findOrFail($line['membership_plan_id']));
             }
+
+            if ($line['service_package_id']) {
+                $this->packages->activateFromSale($sale, $item, ServicePackage::withoutGlobalScopes()->findOrFail($line['service_package_id']));
+            }
+        }
+
+        if ($sale->quote_id) {
+            Quote::withoutGlobalScopes()->whereKey($sale->quote_id)->update(['status' => 'convertida', 'sale_id' => $sale->id, 'converted_at' => now()]);
         }
 
         // Comisiones: se calculan ahora con las reglas vigentes y no se recalculan.
@@ -244,17 +301,25 @@ class SaleController extends Controller
             $this->loyalty->earn($sale);
         }
 
-        // Ingreso en caja si hay sesión abierta. La propina va en un
+        if ($quote['credit_applied'] > 0) {
+            $this->credit->useInSale($sale, $quote['credit_applied']);
+        }
+
+        // Ingreso en caja si hay sesión abierta: solo lo que entra en dinero
+        // (lo pagado con saldo a favor no entra). La propina va en un
         // movimiento aparte: entra a la caja pero no es venta del salón.
         if ($session) {
-            $session->movements()->create([
-                'type'           => 'ingreso',
-                'amount'         => $quote['total'],
-                'concept'        => 'Venta ' . $number,
-                'payment_method' => $validated['payment_method'],
-                'reference'      => (string) $sale->id,
-                'created_by'     => auth()->id(),
-            ]);
+            $money = round($quote['total'] - $quote['credit_applied'], 2);
+            if ($money > 0) {
+                $session->movements()->create([
+                    'type'           => 'ingreso',
+                    'amount'         => $money,
+                    'concept'        => 'Venta ' . $number,
+                    'payment_method' => $validated['payment_method'],
+                    'reference'      => (string) $sale->id,
+                    'created_by'     => auth()->id(),
+                ]);
+            }
 
             if ($quote['tip'] > 0) {
                 $session->movements()->create([
@@ -277,40 +342,22 @@ class SaleController extends Controller
         return match (true) {
             (bool) $line['product_id']         => Product::find($line['product_id'])?->name,
             (bool) $line['membership_plan_id'] => 'Membresía ' . MembershipPlan::withoutGlobalScopes()->find($line['membership_plan_id'])?->name,
+            (bool) $line['service_package_id'] => 'Paquete ' . ServicePackage::withoutGlobalScopes()->find($line['service_package_id'])?->name,
             (bool) $line['service_id']         => \App\Models\Service::find($line['service_id'])?->name,
             default                            => null,
         };
     }
 
-    /**
-     * Mueve el stock de un producto y deja el movimiento de inventario.
-     * $delta negativo = sale stock. Sin stock suficiente se cancela la venta.
-     */
-    protected function moveStock(int $productId, float $delta, string $type, Sale $sale, string $note): void
+    /** La cotización de origen solo se enlaza si es de la empresa y sigue sin convertir ni anular. */
+    protected function convertibleQuoteId($quoteId, int $companyId): ?int
     {
-        $product = Product::whereKey($productId)->lockForUpdate()->first();
-        if (!$product) {
-            return;
+        if (!$quoteId) {
+            return null;
         }
 
-        $current = (float) $product->current_stock;
-        if ($delta < 0 && abs($delta) > $current) {
-            throw new DomainException("No hay stock suficiente de {$product->name}. Disponible: " . rtrim(rtrim(number_format($current, 2), '0'), '.'));
-        }
+        $quote = Quote::withoutGlobalScopes()->where('company_id', $companyId)->whereKey($quoteId)->lockForUpdate()->first();
 
-        $product->update(['current_stock' => max(0, $current + $delta)]);
-
-        InventoryMovement::create([
-            'company_id'    => $sale->company_id,
-            'product_id'    => $product->id,
-            'user_id'       => auth()->id(),
-            'type'          => $type,
-            'quantity'      => abs($delta),
-            'unit_cost'     => $product->cost,
-            'reference'     => $sale->sale_number,
-            'notes'         => $note,
-            'movement_date' => now(),
-        ]);
+        return $quote && $quote->canConvert() ? $quote->id : null;
     }
 
     protected function companyId(): ?int

@@ -81,7 +81,33 @@ class ClientController extends Controller
         $this->authorizeClient($client);
         $client->load('company');
 
-        return view('crm.clients.show', ['client' => $client] + $this->history($client) + $this->benefits($client));
+        return view('crm.clients.show', ['client' => $client] + $this->history($client) + $this->benefits($client) + $this->prepaid($client));
+    }
+
+    /** Paquetes de sesiones y saldo a favor del cliente, según plan y permisos. */
+    protected function prepaid(Client $client): array
+    {
+        $user = auth()->user();
+        $company = $client->company;
+        $can = fn (string $feature, string $permission) => $user->is_super_admin
+            || ($company && $company->planAllows($feature) && $user->hasPermissionInCompany($permission, $company));
+
+        $showPackages = $can('catalog', 'packages.view');
+        $showCredit = $can('sales', 'sales.view');
+        $packages = app(\App\Services\PackageService::class);
+
+        return [
+            'showPackages'    => $showPackages,
+            'showCredit'      => $showCredit,
+            'clientPackages'  => $showPackages
+                ? \App\Models\ClientPackage::with('items.service')->where('client_id', $client->id)->latest('id')->get()
+                    ->map(fn ($p) => ['model' => $p] + $packages->summary($p))
+                : collect(),
+            'creditBalance'   => $showCredit ? app(\App\Services\CreditService::class)->balance($client->company_id, $client->id) : 0.0,
+            'creditMovements' => $showCredit
+                ? \App\Models\ClientCreditMovement::with(['sale', 'saleReturn'])->where('client_id', $client->id)->latest('id')->limit(15)->get()
+                : collect(),
+        ];
     }
 
     /**
@@ -180,8 +206,9 @@ class ClientController extends Controller
             'stats'            => [
                 'visitas'     => $doneAppointments->count(),
                 'compras'     => $paidSales->count(),
-                'gastado'     => (float) $paidSales->sum('total'),
-                'ticket'      => $paidSales->count() ? (float) $paidSales->sum('total') / $paidSales->count() : 0.0,
+                // Neto de devoluciones: lo que el cliente efectivamente dejó en el salón.
+                'gastado'     => (float) $paidSales->sum(fn ($s) => $s->netTotal()),
+                'ticket'      => $paidSales->count() ? (float) $paidSales->sum(fn ($s) => $s->netTotal()) / $paidSales->count() : 0.0,
                 'ultima'      => $lastVisit,
                 'canceladas'  => $appointments->whereIn('status', ['cancelada', 'no_show'])->count(),
                 'favorito'    => $topService?->first()?->service?->name,

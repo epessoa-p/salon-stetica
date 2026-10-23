@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\DB;
  *  - Una membresía vigente por cliente. Comprar otra estando vigente la
  *    encadena: empieza el día siguiente al vencimiento actual.
  *  - Las sesiones usadas no se guardan: se cuentan desde las líneas de venta
- *    no anuladas que las consumieron, así anular una venta devuelve la sesión.
+ *    no anuladas que las consumieron (menos lo devuelto), así anular o
+ *    devolver una venta devuelve la sesión.
  */
 class MembershipService
 {
@@ -37,7 +38,7 @@ class MembershipService
             ->first();
     }
 
-    /** service_id => sesiones ya usadas (líneas de ventas no anuladas). */
+    /** service_id => sesiones ya usadas (líneas de ventas no anuladas, menos lo devuelto). */
     public function usedSessions(ClientMembership $membership): array
     {
         return SaleItem::query()
@@ -47,7 +48,7 @@ class MembershipService
             ->where('sales.status', '!=', 'anulada')
             ->whereNull('sales.deleted_at')
             ->groupBy('sale_details.service_id')
-            ->selectRaw('sale_details.service_id, SUM(sale_details.quantity) AS used')
+            ->selectRaw('sale_details.service_id, SUM(sale_details.quantity - sale_details.returned_quantity) AS used')
             ->pluck('used', 'service_id')
             ->map(fn ($v) => (int) round((float) $v))
             ->all();
@@ -141,6 +142,17 @@ class MembershipService
             ->where('sale_id', $sale->id)
             ->where('status', 'active')
             ->update(['status' => 'canceled', 'canceled_at' => now()]);
+    }
+
+    /** Cancela la membresía vendida en una línea (devolución). */
+    public function cancelForLine(SaleItem $item, string $reason): int
+    {
+        return ClientMembership::withoutGlobalScopes()
+            ->where('sale_detail_id', $item->id)
+            ->where('status', 'active')
+            ->get()
+            ->each(fn (ClientMembership $m) => $this->cancel($m, $reason))
+            ->count();
     }
 
     public function cancel(ClientMembership $membership, ?string $reason = null): void

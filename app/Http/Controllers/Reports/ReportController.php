@@ -80,10 +80,14 @@ class ReportController extends Controller
 
         $total = (float) $base()->sum('total');
         $count = $base()->count();
+        // Las devoluciones restan en la fecha en que se hicieron (no en la de la venta).
+        $returned = (float) \App\Models\SaleReturn::whereBetween('return_date', [$from, $to])->sum('total');
 
         return [
             'kpis' => [
                 ['label' => 'Total vendido', 'value' => number_format($total, 2), 'icon' => 'bi-cash-coin', 'color' => '#14b8a6'],
+                ['label' => 'Devoluciones', 'value' => number_format($returned, 2), 'icon' => 'bi-arrow-return-left', 'color' => '#f59e0b'],
+                ['label' => 'Neto', 'value' => number_format($total - $returned, 2), 'icon' => 'bi-cash-stack', 'color' => '#0ea5e9'],
                 ['label' => 'N. de ventas', 'value' => $count, 'icon' => 'bi-receipt', 'color' => '#6366f1'],
                 ['label' => 'Ticket promedio', 'value' => number_format($count ? $total / $count : 0, 2), 'icon' => 'bi-graph-up', 'color' => '#10b981'],
             ],
@@ -108,7 +112,9 @@ class ReportController extends Controller
 
     protected function servicios(Carbon $from, Carbon $to): array
     {
-        $vendidos = SaleItem::selectRaw('service_id, SUM(quantity) as cantidad, SUM(total) as monto')
+        // Neto de devoluciones: se descuenta la parte devuelta de cada línea.
+        $vendidos = SaleItem::selectRaw('service_id, SUM(quantity - returned_quantity) as cantidad,'
+                . ' SUM(CASE WHEN quantity > 0 THEN total * (quantity - returned_quantity) / quantity ELSE 0 END) as monto')
             ->whereNotNull('service_id')
             ->whereHas('sale', fn ($q) => $q->where('status', 'completada')->whereBetween('sale_date', [$from, $to]))
             ->groupBy('service_id')->orderByDesc('monto')->with('service')->limit(15)->get();

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Purchasing\PurchaseOrderController;
+use App\Http\Controllers\Purchasing\PurchaseReturnController;
 use App\Http\Controllers\Purchasing\SupplierController;
 use Illuminate\Support\Facades\Route;
 
@@ -25,4 +26,12 @@ Route::prefix('admin/purchase-orders')->name('purchase-orders.')->middleware('ch
     Route::get('/{purchaseOrder}', [PurchaseOrderController::class, 'show'])->name('show');
     Route::post('/{purchaseOrder}/receive', [PurchaseOrderController::class, 'receive'])->name('receive')->middleware('check-permission:purchases.receive');
     Route::post('/{purchaseOrder}/void', [PurchaseOrderController::class, 'void'])->name('void')->middleware('check-permission:purchases.void');
+});
+
+// Devoluciones a proveedor (sobre órdenes recibidas)
+Route::prefix('admin/purchase-returns')->name('purchase-returns.')->middleware('check-permission:purchase-returns.view')->group(function () {
+    Route::get('/', [PurchaseReturnController::class, 'index'])->name('index');
+    Route::get('/order/{purchaseOrder}', [PurchaseReturnController::class, 'create'])->name('create')->middleware('check-permission:purchase-returns.create');
+    Route::post('/order/{purchaseOrder}', [PurchaseReturnController::class, 'store'])->name('store')->middleware('check-permission:purchase-returns.create');
+    Route::get('/{purchaseReturn}', [PurchaseReturnController::class, 'show'])->name('show');
 });

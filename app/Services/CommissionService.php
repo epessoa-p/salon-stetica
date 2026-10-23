@@ -52,7 +52,7 @@ class CommissionService
             return 0;
         }
 
-        $items = $sale->items()->with('clientMembership')->get();
+        $items = $sale->items()->with(['clientMembership', 'clientPackage.items'])->get();
         $categories = $this->categoriesFor($items);
         $now = now();
         $created = 0;
@@ -116,11 +116,16 @@ class CommissionService
      * Base de la comisión de una línea:
      *  - normal: total de la línea + descuento de membresía (ese descuento lo
      *    asume el salón, no reduce la comisión);
-     *  - sesión incluida en una membresía (se cobró en 0): lo que el salón
-     *    cobró por cada sesión × cantidad.
+     *  - sesión incluida en una membresía o de un paquete (se cobró en 0): lo
+     *    que el salón cobró por cada sesión × cantidad.
      */
     protected function baseFor(SaleItem $item): float
     {
+        if ($item->uses_session && $item->clientPackage) {
+            $unit = $item->clientPackage->items->firstWhere('service_id', $item->service_id)?->unit_value ?? 0;
+
+            return round((float) $unit * (float) $item->quantity, 2);
+        }
         if ($item->uses_session && $item->clientMembership) {
             return round((float) $item->clientMembership->session_unit_value * (float) $item->quantity, 2);
         }
@@ -211,6 +216,58 @@ class CommissionService
         }
 
         return $reversals;
+    }
+
+    /**
+     * Devolución parcial: por cada línea devuelta, una comisión negativa
+     * pendiente proporcional a la cantidad devuelta (se descuenta en la
+     * próxima liquidación del profesional, esté o no pagada la original).
+     *
+     * @param  array<int, float>  $quantities  sale_detail_id => cantidad devuelta
+     */
+    public function reverseForReturn(Sale $sale, array $quantities, string $returnNumber): int
+    {
+        $originals = Commission::withoutGlobalScopes()
+            ->with('saleItem')
+            ->where('sale_id', $sale->id)
+            ->whereIn('sale_detail_id', array_keys($quantities))
+            ->where(fn ($q) => $q->whereNull('calc_type')->orWhere('calc_type', '!=', 'reversal'))
+            ->get();
+
+        $now = now();
+        $created = 0;
+
+        foreach ($originals as $original) {
+            $soldQty = (float) ($original->saleItem?->quantity ?? 0);
+            $share = $soldQty > 0 ? min(1, ($quantities[$original->sale_detail_id] ?? 0) / $soldQty) : 0;
+            $amount = round((float) $original->amount * $share, 2);
+            if ($amount <= 0) {
+                continue;
+            }
+
+            Commission::create([
+                'company_id'     => $original->company_id,
+                'personal_id'    => $original->personal_id,
+                'sale_id'        => $original->sale_id,
+                'sale_detail_id' => $original->sale_detail_id,
+                'rule_id'        => $original->rule_id,
+                'reverses_id'    => $original->id,
+                'base'           => -round((float) $original->base * $share, 2),
+                'calc_type'      => 'reversal',
+                'calc_value'     => $original->calc_value,
+                'rate'           => 0,
+                'amount'         => -$amount,
+                'status'         => 'pendiente',
+                'accrued_at'     => $now,
+                'period_start'   => $now->toDateString(),
+                'period_end'     => $now->toDateString(),
+                'notes'          => 'Reverso por devolución ' . $returnNumber . ' de la venta ' . $sale->sale_number,
+                'created_by'     => auth()->id(),
+            ]);
+            $created++;
+        }
+
+        return $created;
     }
 
     // ------------------------------------------------------------------

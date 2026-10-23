@@ -14,11 +14,14 @@ class SaleItem extends Model
 
     protected $fillable = [
         'sale_id', 'product_id', 'service_id', 'personal_id', 'membership_plan_id', 'client_membership_id',
-        'uses_session', 'description', 'quantity', 'unit_price', 'discount', 'membership_discount', 'total',
+        'combo_id', 'service_package_id', 'client_package_id', 'uses_session', 'description', 'quantity',
+        'returned_quantity', 'unit_price', 'discount', 'membership_discount', 'package_discount', 'total',
     ];
 
     protected $casts = [
         'quantity' => 'decimal:2',
+        'returned_quantity' => 'decimal:2',
+        'package_discount' => 'decimal:2',
         'unit_price' => 'decimal:2',
         'discount' => 'decimal:2',
         'membership_discount' => 'decimal:2',
@@ -36,6 +39,39 @@ class SaleItem extends Model
     public function clientMembership(): BelongsTo
     {
         return $this->belongsTo(ClientMembership::class);
+    }
+
+    public function combo(): BelongsTo
+    {
+        return $this->belongsTo(Combo::class)->withTrashed();
+    }
+
+    /** Paquete que se vende en esta línea. */
+    public function servicePackage(): BelongsTo
+    {
+        return $this->belongsTo(ServicePackage::class)->withTrashed();
+    }
+
+    /** Paquete del cliente del que se usó la sesión. */
+    public function clientPackage(): BelongsTo
+    {
+        return $this->belongsTo(ClientPackage::class);
+    }
+
+    public function returnItems(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SaleReturnItem::class, 'sale_detail_id');
+    }
+
+    public function isPackageSale(): bool
+    {
+        return (int) $this->service_package_id > 0;
+    }
+
+    /** Cantidad que todavía se puede devolver. */
+    public function returnableQuantity(): float
+    {
+        return max(0, round((float) $this->quantity - (float) $this->returned_quantity, 2));
     }
 
     public function isMembershipSale(): bool

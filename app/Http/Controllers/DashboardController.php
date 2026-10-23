@@ -66,10 +66,13 @@ class DashboardController extends Controller
         // — Ventas del día y del mes —
         if ($show['ventas']) {
             $ventasHoy = Sale::where('status', 'completada')->whereDate('sale_date', $today);
-            $data['ventasHoyTotal'] = (float) (clone $ventasHoy)->sum('total');
+            // Neto de devoluciones del mismo periodo.
+            $data['ventasHoyTotal'] = (float) (clone $ventasHoy)->sum('total')
+                - (float) \App\Models\SaleReturn::whereDate('return_date', $today)->sum('total');
             $data['ventasHoyCount'] = (clone $ventasHoy)->count();
             $data['ventasMesTotal'] = (float) Sale::where('status', 'completada')
-                ->where('sale_date', '>=', $monthStart)->sum('total');
+                ->where('sale_date', '>=', $monthStart)->sum('total')
+                - (float) \App\Models\SaleReturn::where('return_date', '>=', $monthStart)->sum('total');
             $data['ultimasVentas'] = Sale::with('client')
                 ->where('status', 'completada')
                 ->latest('sale_date')->limit(5)->get();

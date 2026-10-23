@@ -171,6 +171,34 @@ class LoyaltyService
         return $movements->count();
     }
 
+    /**
+     * Devolución parcial: quita la parte proporcional de lo ganado y devuelve
+     * la parte proporcional de lo canjeado. Usa el tipo `reverse`, igual que la
+     * anulación (una venta con devoluciones ya no se puede anular).
+     */
+    public function adjustForReturn(Sale $sale, int $pointsRemoved, int $pointsReturned, string $returnNumber): void
+    {
+        if (!$sale->client_id) {
+            return;
+        }
+
+        foreach ([[-$pointsRemoved, 'Se quitan puntos ganados'], [$pointsReturned, 'Se devuelven puntos canjeados']] as [$points, $label]) {
+            if ($points === 0) {
+                continue;
+            }
+            LoyaltyMovement::create([
+                'company_id' => $sale->company_id,
+                'client_id'  => $sale->client_id,
+                'sale_id'    => $sale->id,
+                'type'       => 'reverse',
+                'points'     => $points,
+                'amount'     => 0,
+                'notes'      => $label . ' · devolución ' . $returnNumber,
+                'created_by' => auth()->id(),
+            ]);
+        }
+    }
+
     /** Ajuste manual con motivo (suma o resta). */
     public function adjust(int $companyId, int $clientId, int $points, string $reason, User $by): LoyaltyMovement
     {

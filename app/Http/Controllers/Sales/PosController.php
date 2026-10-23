@@ -6,13 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\CashSession;
 use App\Models\Client;
+use App\Models\Combo;
 use App\Models\CompanySetting;
 use App\Models\MembershipPlan;
 use App\Models\PaymentMethod;
 use App\Models\Personal;
 use App\Models\Product;
+use App\Models\Quote;
 use App\Models\Service;
 use App\Models\ServiceCategory;
+use App\Models\ServicePackage;
 use App\Services\CheckoutService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,7 +30,7 @@ class PosController extends Controller
     {
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $user = auth()->user();
         $company = $user->getCurrentCompany();
@@ -81,6 +84,8 @@ class PosController extends Controller
             );
         }
 
+        $catalog = $catalog->concat($this->combos($companyId, $sellsProducts))->concat($this->packages($companyId));
+
         $openSessions = CashSession::with('register')
             ->where('status', 'open')
             ->whereHas('register', fn ($q) => $q->where('company_id', $companyId))
@@ -99,7 +104,104 @@ class PosController extends Controller
             'branches'         => Branch::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(['id', 'name']),
             'openSessions'     => $openSessions,
             'canCreateClient'  => $user->is_super_admin || $user->hasPermissionInCompany('clients.create', $company),
+            'canQuote'         => $user->is_super_admin || $user->hasPermissionInCompany('quotes.create', $company),
+            'fromQuote'        => $request->filled('quote') ? $this->fromQuote((int) $request->input('quote'), $companyId, $catalog) : null,
         ]);
+    }
+
+    /** Combos a la venta. Con productos, se vende hasta donde alcance el stock. */
+    protected function combos(int $companyId, bool $sellsProducts)
+    {
+        return Combo::with(['items.service', 'items.product'])->where('company_id', $companyId)->where('active', true)
+            ->orderBy('sort_order')->orderBy('name')->get()
+            ->filter(fn ($c) => $c->items->isNotEmpty() && ($sellsProducts || !$c->hasProducts()))
+            ->map(function ($c) {
+                $products = $c->items->whereNotNull('product_id');
+
+                return [
+                    'kind'   => 'combo',
+                    'id'     => $c->id,
+                    'name'   => $c->name,
+                    'price'  => (float) $c->price,
+                    'list'   => $c->listPrice(),
+                    'detail' => $c->summary(),
+                    // Cuántos combos alcanza el stock (null = sin productos, sin límite).
+                    'stock'  => $products->isEmpty() ? null
+                        : (float) $products->map(fn ($i) => floor((float) ($i->product?->current_stock ?? 0) / max(0.01, (float) $i->quantity)))->min(),
+                ];
+            })->values();
+    }
+
+    /** Paquetes de sesiones a la venta. */
+    protected function packages(int $companyId)
+    {
+        return ServicePackage::with('items.service')->where('company_id', $companyId)->where('active', true)
+            ->orderBy('sort_order')->orderBy('name')->get()
+            ->filter(fn ($p) => $p->items->isNotEmpty())
+            ->map(fn ($p) => [
+                'kind'     => 'package',
+                'id'       => $p->id,
+                'name'     => $p->name,
+                'price'    => (float) $p->price,
+                'list'     => $p->listPrice(),
+                'duration' => $p->validityLabel(),
+                'detail'   => $p->summary(),
+            ])->values();
+    }
+
+    /**
+     * Carrito armado desde una cotización. Vigente: con sus precios.
+     * Vencida: con los precios actuales del catálogo (y se avisa).
+     */
+    protected function fromQuote(int $quoteId, int $companyId, $catalog): ?array
+    {
+        $quote = Quote::with('items')->where('company_id', $companyId)->find($quoteId);
+        if (!$quote || !$quote->canConvert()) {
+            return ['error' => $quote ? 'La cotización ' . $quote->quote_number . ' ya está ' . mb_strtolower($quote->stateLabel()) . '.' : 'Cotización no encontrada.'];
+        }
+
+        $valid = $quote->isValid();
+        $prices = collect($catalog)->mapWithKeys(fn ($it) => [$it['kind'] . ':' . $it['id'] => $it['price']]);
+        $items = [];
+        $missing = 0;
+
+        foreach ($quote->items as $item) {
+            $key = $item->catalogKey();
+            if (!$key || !$prices->has($key)) {
+                $missing++;
+                continue;
+            }
+            [$kind, $id] = explode(':', $key);
+            $items[] = [
+                'service_id'         => $kind === 'service' ? $id : null,
+                'product_id'         => $kind === 'product' ? $id : null,
+                'combo_id'           => $kind === 'combo' ? $id : null,
+                'service_package_id' => $kind === 'package' ? $id : null,
+                'membership_plan_id' => $kind === 'membership' ? $id : null,
+                'quantity'           => (float) $item->quantity,
+                'unit_price'         => $valid ? (float) $item->unit_price : $prices[$key],
+                'discount'           => $valid ? (float) $item->discount : 0,
+                'personal_id'        => $item->personal_id,
+            ];
+        }
+
+        return [
+            'id'      => $quote->id,
+            'number'  => $quote->quote_number,
+            'valid'   => $valid,
+            'message' => ($valid
+                    ? 'Venta desde la cotización ' . $quote->quote_number . ': se respetan sus precios (vigente hasta el ' . $quote->valid_until->format('d/m/Y') . ').'
+                    : 'La cotización ' . $quote->quote_number . ' venció el ' . $quote->valid_until->format('d/m/Y') . ': se cargaron los precios actuales.')
+                . ($missing ? " {$missing} línea(s) ya no están en el catálogo y no se cargaron." : ''),
+            'old'     => [
+                'items'           => $items,
+                'client_id'       => $quote->client_id,
+                'client_name'     => $quote->client_name,
+                'personal_id'     => $quote->personal_id,
+                'global_discount' => $valid ? (float) $quote->global_discount : 0,
+                'notes'           => $quote->notes,
+            ],
+        ];
     }
 
     /** Búsqueda de clientes por nombre, teléfono o documento (top 10). */

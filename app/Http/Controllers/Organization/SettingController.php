@@ -44,6 +44,7 @@ class SettingController extends Controller
             'invoice_footer'           => ['nullable', 'string', 'max:500'],
             'sale_prefix'              => ['required', 'string', 'max:10'],
             'sale_padding'             => ['required', 'integer', 'min:1', 'max:12'],
+            'quote_valid_days'         => ['required', 'integer', 'min:1', 'max:365'],
             'appointment_slot_minutes' => ['required', 'integer', 'min:5', 'max:240'],
             'attendance_tolerance_minutes' => ['required', 'integer', 'min:0', 'max:120'],
         ]);

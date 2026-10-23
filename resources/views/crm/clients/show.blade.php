@@ -31,6 +31,16 @@
                         </button>
                     </li>
                 @endif
+                @if($showPackages || $showCredit)
+                    @php $usablePackages = collect($clientPackages)->where('state', 'active')->count(); @endphp
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-prepaid" type="button">
+                            Paquetes y saldo
+                            @if($usablePackages)<span class="badge bg-success-subtle text-success-emphasis ms-1">{{ $usablePackages }}</span>@endif
+                            @if($creditBalance > 0)<span class="badge bg-primary-subtle text-primary-emphasis ms-1"><i class="bi bi-wallet2"></i></span>@endif
+                        </button>
+                    </li>
+                @endif
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-obs" type="button">Observaciones</button></li>
             </ul>
 
@@ -174,6 +184,13 @@
                 @if($showMemberships || $showPoints)
                     <div class="tab-pane fade" id="tab-benefits">
                         @include('crm.clients._benefits')
+                    </div>
+                @endif
+
+                {{-- Paquetes y saldo a favor --}}
+                @if($showPackages || $showCredit)
+                    <div class="tab-pane fade" id="tab-prepaid">
+                        @include('crm.clients._prepaid')
                     </div>
                 @endif
 

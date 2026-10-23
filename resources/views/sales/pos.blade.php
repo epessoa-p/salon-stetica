@@ -22,6 +22,8 @@
         'taxIncluded'      => (bool) $setting->tax_included,
         'requireCash'      => (bool) $setting->require_cash_session,
         'canCreateClient'  => $canCreateClient,
+        'canQuote'         => $canQuote,
+        'quoteId'          => old('quote_id', ($fromQuote['id'] ?? null)),
         'csrf'             => csrf_token(),
         'routes'           => [
             'quote'       => route('sales.pos.quote'),
@@ -29,8 +31,10 @@
             'client'      => url('admin/sales/pos/clients'),
             'storeClient' => route('sales.pos.clients.store'),
             'cashOpen'    => route('cash-sessions.create'),
+            'quoteStore'  => $canQuote ? route('quotes.store') : null,
         ],
-        // Si el cobro falla, el carrito se reconstruye con lo enviado.
+        // Si el cobro falla, el carrito se reconstruye con lo enviado; si se
+        // viene de una cotización, con sus líneas.
         'old' => old('items') ? [
             'items'           => old('items'),
             'client_id'       => old('client_id'),
@@ -41,9 +45,10 @@
             'branch_id'       => old('branch_id'),
             'global_discount' => old('global_discount'),
             'redeem_points'   => old('redeem_points'),
+            'credit_amount'   => old('credit_amount'),
             'tip'             => old('tip'),
             'notes'           => old('notes'),
-        ] : null,
+        ] : ($fromQuote['old'] ?? null),
     ];
 @endphp
 
@@ -55,8 +60,21 @@
                 <kbd>/</kbd> buscar · <kbd>Enter</kbd> agregar el primero · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> cobrar
             </p>
         </div>
-        <a href="{{ route('sales.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-receipt"></i> Ventas</a>
+        <div class="d-flex gap-2">
+            @if($canQuote)
+                <a href="{{ route('quotes.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-file-earmark-text"></i> Cotizaciones</a>
+            @endif
+            <a href="{{ route('sales.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-receipt"></i> Ventas</a>
+        </div>
     </div>
+
+    @if(!empty($fromQuote['error']))
+        <div class="alert alert-warning"><i class="bi bi-exclamation-triangle"></i> {{ $fromQuote['error'] }}</div>
+    @elseif($fromQuote)
+        <div class="alert {{ $fromQuote['valid'] ? 'alert-info' : 'alert-warning' }} d-flex align-items-center gap-2">
+            <i class="bi bi-file-earmark-text"></i> <span>{{ $fromQuote['message'] }}</span>
+        </div>
+    @endif
 
     @if($errors->any())
         <div class="alert alert-danger">
@@ -75,7 +93,7 @@
                 <div class="pos-search">
                     <i class="bi bi-search"></i>
                     <input type="search" id="pos-search" class="form-control no-uppercase"
-                           placeholder="Buscar servicio{{ $sellsProducts ? ', producto' : '' }}{{ $sellsMemberships ? ' o membresía' : '' }}…" autofocus>
+                           placeholder="Buscar servicio{{ $sellsProducts ? ', producto' : '' }}, combo, paquete{{ $sellsMemberships ? ' o membresía' : '' }}…" autofocus>
                     <kbd class="d-none d-md-inline">/</kbd>
                 </div>
                 <div class="pos-chips" id="pos-chips"></div>
@@ -140,6 +158,22 @@
                 {{-- Puntos --}}
                 <div class="pos-block d-none" id="pos-points"></div>
 
+                {{-- Saldo a favor --}}
+                <div class="pos-block d-none" id="pos-credit">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="pos-block-title mb-0"><i class="bi bi-wallet2"></i> Saldo a favor</span>
+                        <span class="small" id="credit-info"></span>
+                    </div>
+                    <div class="d-flex gap-2 mt-2 align-items-center">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">{{ $setting->currency_symbol }}</span>
+                            <input type="number" id="pos-credit-input" class="form-control text-end no-uppercase" min="0" step="0.5" placeholder="Monto a usar">
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" id="credit-max">Usar todo</button>
+                    </div>
+                    <div class="form-text">Paga parte o todo el total (no la propina).</div>
+                </div>
+
                 {{-- Propina --}}
                 <div class="pos-block">
                     <div class="d-flex justify-content-between align-items-center">
@@ -194,6 +228,11 @@
                     <button type="submit" class="btn btn-success btn-lg w-100" id="pos-submit" disabled>
                         <i class="bi bi-cash-coin"></i> <span id="pos-submit-label">Cobrar</span>
                     </button>
+                    @if($canQuote)
+                        <button type="button" class="btn btn-outline-secondary btn-sm w-100 mt-2" id="pos-save-quote" disabled>
+                            <i class="bi bi-file-earmark-text"></i> Guardar como cotización
+                        </button>
+                    @endif
                 </div>
             </aside>
         </div>
@@ -252,7 +291,7 @@
 @push('styles')
 <style>
     /* ---------- Punto de venta ---------- */
-    .pos { --svc: #a855f7; --prd: #f59e0b; --mem: #ec4899; }
+    .pos { --svc: #a855f7; --prd: #f59e0b; --mem: #ec4899; --cmb: #0ea5e9; --pkg: #10b981; }
 
     .pos-grid {
         display: grid;
@@ -316,6 +355,9 @@
     .pos-card:disabled { opacity: .45; cursor: not-allowed; }
     .pos-card.kind-product { --c: var(--prd); }
     .pos-card.kind-membership { --c: var(--mem); background: color-mix(in srgb, var(--mem) 5%, #fff); }
+    .pos-card.kind-combo { --c: var(--cmb); background: color-mix(in srgb, var(--cmb) 5%, #fff); }
+    .pos-card.kind-package { --c: var(--pkg); background: color-mix(in srgb, var(--pkg) 5%, #fff); }
+    .pos-card-list { font-size: .72rem; color: #9ca3af; text-decoration: line-through; font-weight: 400; margin-left: .25rem; }
     .pos-card-icon { color: var(--c); font-size: .85rem; }
     .pos-card-name { font-weight: 600; font-size: .85rem; line-height: 1.2; color: #111827; }
     .pos-card-meta { font-size: .72rem; color: #6b7280; line-height: 1.2; }
@@ -365,6 +407,10 @@
     .pos-badge { display: inline-block; font-size: .65rem; font-weight: 700; border-radius: 4px; padding: .05rem .35rem; margin-left: .25rem; vertical-align: middle; }
     .pos-badge.product { background: color-mix(in srgb, var(--prd) 18%, #fff); color: #92400e; }
     .pos-badge.membership, .pos-badge.benefit { background: color-mix(in srgb, var(--mem) 15%, #fff); color: #9d174d; }
+    .pos-badge.combo { background: color-mix(in srgb, var(--cmb) 15%, #fff); color: #075985; }
+    .pos-badge.package { background: color-mix(in srgb, var(--pkg) 15%, #fff); color: #065f46; }
+    .pos-pkg { margin-top: .4rem; padding: .4rem .6rem; border-radius: 6px; font-size: .78rem; background: color-mix(in srgb, var(--pkg) 8%, #fff); border: 1px solid color-mix(in srgb, var(--pkg) 25%, #fff); }
+    .pos-credit-chip { margin-top: .4rem; font-size: .78rem; color: #1d4ed8; }
     .pos-stepper { display: inline-flex; align-items: center; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
     .pos-stepper button { border: 0; background: #f9fafb; width: 26px; height: 26px; line-height: 1; font-weight: 700; color: #374151; }
     .pos-stepper button:hover:not(:disabled) { background: #eef0f2; }

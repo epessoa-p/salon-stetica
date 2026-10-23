@@ -16,8 +16,8 @@ class Sale extends Model
     protected $fillable = [
         'company_id', 'branch_id', 'client_id', 'personal_id', 'cash_session_id', 'sale_number',
         'client_name', 'client_phone', 'client_document', 'sale_date',
-        'subtotal', 'tax', 'discount', 'membership_discount', 'loyalty_points_redeemed', 'loyalty_discount',
-        'loyalty_points_earned', 'total', 'tip', 'tip_settlement_id', 'payment_method', 'status',
+        'subtotal', 'tax', 'discount', 'membership_discount', 'package_discount', 'loyalty_points_redeemed', 'loyalty_discount',
+        'loyalty_points_earned', 'total', 'tip', 'credit_applied', 'returned_total', 'quote_id', 'tip_settlement_id', 'payment_method', 'status',
         'notes', 'created_by',
     ];
 
@@ -27,6 +27,9 @@ class Sale extends Model
         'tax' => 'decimal:2',
         'discount' => 'decimal:2',
         'membership_discount' => 'decimal:2',
+        'package_discount' => 'decimal:2',
+        'credit_applied' => 'decimal:2',
+        'returned_total' => 'decimal:2',
         'loyalty_discount' => 'decimal:2',
         'loyalty_points_redeemed' => 'integer',
         'loyalty_points_earned' => 'integer',
@@ -69,6 +72,43 @@ class Sale extends Model
     public function commissions(): HasMany
     {
         return $this->hasMany(Commission::class);
+    }
+
+    public function returns(): HasMany
+    {
+        return $this->hasMany(SaleReturn::class);
+    }
+
+    public function quote(): BelongsTo
+    {
+        return $this->belongsTo(Quote::class);
+    }
+
+    /** Lo que entró en dinero: el total menos lo pagado con saldo a favor. */
+    public function paidInMoney(): float
+    {
+        return round((float) $this->total - (float) $this->credit_applied, 2);
+    }
+
+    public function hasReturns(): bool
+    {
+        return (float) $this->returned_total > 0 || $this->returns()->exists();
+    }
+
+    /** Total neto de devoluciones. */
+    public function netTotal(): float
+    {
+        return round((float) $this->total - (float) $this->returned_total, 2);
+    }
+
+    /** none | partial | full según lo devuelto. */
+    public function returnState(): string
+    {
+        if ((float) $this->returned_total <= 0 && !$this->items->contains(fn ($i) => (float) $i->returned_quantity > 0)) {
+            return 'none';
+        }
+
+        return $this->items->every(fn ($i) => (float) $i->returned_quantity >= (float) $i->quantity) ? 'full' : 'partial';
     }
 
     public function isVoided(): bool

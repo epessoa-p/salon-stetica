@@ -34,7 +34,7 @@
             'items' => [
                 ['label' => 'Servicios',        'icon' => 'bi-scissors',   'built' => true, 'route' => 'services.index',           'pattern' => 'services.*'],
                 ['label' => 'Categorías',       'icon' => 'bi-tags',       'built' => true, 'route' => 'service-categories.index', 'pattern' => 'service-categories.*'],
-                ['label' => 'Combos y Paquetes','icon' => 'bi-collection', 'built' => false],
+                ['label' => 'Combos y Paquetes','icon' => 'bi-collection', 'built' => true, 'route' => 'combos.index', 'pattern' => ['combos.*', 'packages.*']],
             ],
         ],
         [
@@ -44,8 +44,8 @@
             'items' => [
                 ['label' => 'Punto de Venta', 'icon' => 'bi-upc-scan',           'built' => true, 'route' => 'sales.pos',   'pattern' => 'sales.pos'],
                 ['label' => 'Ventas',         'icon' => 'bi-receipt',            'built' => true, 'route' => 'sales.index', 'pattern' => 'sales.index'],
-                ['label' => 'Cotizaciones',   'icon' => 'bi-file-earmark-text',  'built' => false],
-                ['label' => 'Devoluciones',   'icon' => 'bi-arrow-return-left',  'built' => false],
+                ['label' => 'Cotizaciones',   'icon' => 'bi-file-earmark-text',  'built' => true, 'route' => 'quotes.index',  'pattern' => 'quotes.*'],
+                ['label' => 'Devoluciones',   'icon' => 'bi-arrow-return-left',  'built' => true, 'route' => 'returns.index', 'pattern' => 'returns.*'],
             ],
         ],
         [
@@ -80,7 +80,7 @@
                 ['label' => 'Proveedores',  'icon' => 'bi-building',          'built' => true, 'route' => 'suppliers.index',            'pattern' => 'suppliers.*'],
                 ['label' => 'Órdenes',      'icon' => 'bi-file-earmark-plus', 'built' => true, 'route' => 'purchase-orders.index',      'pattern' => 'purchase-orders.index'],
                 ['label' => 'Recepciones',  'icon' => 'bi-box-arrow-in-down', 'built' => true, 'route' => 'purchase-orders.receptions', 'pattern' => 'purchase-orders.receptions'],
-                ['label' => 'Devoluciones', 'icon' => 'bi-arrow-return-left', 'built' => false],
+                ['label' => 'Devoluciones', 'icon' => 'bi-arrow-return-left', 'built' => true, 'route' => 'purchase-returns.index', 'pattern' => 'purchase-returns.*'],
             ],
         ],
         [

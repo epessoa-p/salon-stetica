@@ -21,7 +21,7 @@ class CompanySetting extends Model
         'currency', 'currency_symbol',
         'tax_rate', 'tax_included', 'tax_label',
         'invoice_business_name', 'invoice_nit', 'invoice_address', 'invoice_phone', 'invoice_footer',
-        'sale_prefix', 'sale_padding',
+        'sale_prefix', 'sale_padding', 'quote_valid_days',
         'appointment_slot_minutes', 'attendance_tolerance_minutes', 'require_cash_session',
         'loyalty_enabled', 'loyalty_amount_per_point', 'loyalty_point_value', 'loyalty_min_redeem', 'loyalty_expiry_months',
     ];
@@ -31,6 +31,7 @@ class CompanySetting extends Model
         'tax_included'             => 'boolean',
         'require_cash_session'     => 'boolean',
         'sale_padding'             => 'integer',
+        'quote_valid_days'         => 'integer',
         'appointment_slot_minutes' => 'integer',
         'attendance_tolerance_minutes' => 'integer',
         'loyalty_enabled'          => 'boolean',
@@ -48,6 +49,7 @@ class CompanySetting extends Model
         'tax_label'                => 'IVA',
         'sale_prefix'              => 'V-',
         'sale_padding'             => 6,
+        'quote_valid_days'         => 15,
         'appointment_slot_minutes' => 30,
         'attendance_tolerance_minutes' => 10,
         'require_cash_session'     => false,
@@ -120,6 +122,12 @@ class CompanySetting extends Model
     public function pointsValue(int $points): float
     {
         return round($points * (float) $this->loyalty_point_value, 2);
+    }
+
+    /** Folio de otros documentos (cotización, devolución) con el mismo relleno que las ventas. */
+    public function documentFolio(string $prefix, int $consecutive): string
+    {
+        return $prefix . str_pad((string) $consecutive, max(1, $this->sale_padding), '0', STR_PAD_LEFT);
     }
 
     /** Folio siguiente a partir de un consecutivo. */

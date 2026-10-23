@@ -2,9 +2,9 @@
  * Glamora · Punto de venta
  *
  * El carrito vive en el navegador, pero los totales, descuentos de membresía,
- * sesiones incluidas y canje de puntos los calcula el servidor (endpoint
- * `quote`, el mismo CheckoutService que usa el cobro). Así lo que ve la
- * cajera y lo que se registra nunca difieren.
+ * sesiones incluidas (membresía o paquete), combos, canje de puntos y saldo a
+ * favor los calcula el servidor (endpoint `quote`, el mismo CheckoutService
+ * que usa el cobro). Así lo que ve la cajera y lo que se registra nunca difieren.
  */
 (function () {
     'use strict';
@@ -13,8 +13,12 @@
     if (!C) return;
 
     const $ = (id) => document.getElementById(id);
-    const KIND_ICON = { service: 'bi-scissors', product: 'bi-box', membership: 'bi-award' };
-    const KIND_LABEL = { product: 'Producto', membership: 'Membresía' };
+    const KIND_ICON = { service: 'bi-scissors', product: 'bi-box', membership: 'bi-award', combo: 'bi-collection', package: 'bi-ticket-perforated' };
+    const KIND_LABEL = { product: 'Producto', membership: 'Membresía', combo: 'Combo', package: 'Paquete' };
+    // Se venden de a uno por venta (se activan una sola vez para el cliente).
+    const SINGLE = ['membership', 'package'];
+    // Tienen tope de stock: productos y combos con productos.
+    const limited = (it) => it.stock !== null && it.stock !== undefined;
 
     // ------------------------------------------------------------------
     //  Estado
@@ -31,6 +35,7 @@
         globalDiscount: 0,
         showGlobal: false,
         redeem: 0,
+        credit: 0,
         tip: 0,
         received: '',
         filter: 'all',
@@ -86,7 +91,7 @@
         });
         const loose = C.catalog.filter((it) => it.kind === 'service' && !it.category_id).length;
         if (loose && list.length > 1) list.push({ id: 'cat:none', label: 'Otros servicios', count: loose });
-        [['product', 'Productos'], ['membership', 'Membresías']].forEach(([kind, label]) => {
+        [['combo', 'Combos'], ['package', 'Paquetes'], ['product', 'Productos'], ['membership', 'Membresías']].forEach(([kind, label]) => {
             const n = C.catalog.filter((it) => it.kind === kind).length;
             if (n) list.push({ id: kind, label, count: n });
         });
@@ -103,7 +108,7 @@
         const words = norm(state.search).split(/\s+/).filter(Boolean);
         return C.catalog.filter((it) => {
             const f = state.filter;
-            if (f === 'product' || f === 'membership') { if (it.kind !== f) return false; }
+            if (['product', 'membership', 'combo', 'package'].includes(f)) { if (it.kind !== f) return false; }
             else if (f === 'cat:none') { if (it.kind !== 'service' || it.category_id) return false; }
             else if (f.startsWith('cat:')) { if (it.kind !== 'service' || String(it.category_id) !== f.slice(4)) return false; }
             const name = norm(it.name);
@@ -116,20 +121,23 @@
     function cardMeta(it) {
         if (it.kind === 'service') return it.duration ? it.duration + ' min' : 'Servicio';
         if (it.kind === 'product') return it.stock > 0 ? 'Stock ' + (+it.stock.toFixed(2)) : 'Sin stock';
+        if (it.kind === 'combo') return esc(it.detail) + (limited(it) && it.stock <= 0 ? '<br>Sin stock' : '');
         return esc(it.duration) + (it.detail ? '<br>' + esc(it.detail) : '');
     }
+
+    const listPrice = (it) => it.list && it.list > it.price + 0.005 ? `<span class="pos-card-list">${money(it.list)}</span>` : '';
 
     function renderCatalog() {
         const items = visibleItems();
         $('pos-items').innerHTML = items.map((it) => {
             const inCart = qtyInCart(it.key);
-            const soldOut = it.kind === 'product' && inCart >= it.stock;
+            const soldOut = limited(it) && inCart >= it.stock;
             return `<button type="button" class="pos-card kind-${it.kind}" data-key="${it.key}" ${soldOut ? 'disabled' : ''}
                         title="${esc(it.name)}">
-                <span class="pos-card-icon"><i class="bi ${KIND_ICON[it.kind]}"></i>${it.kind === 'membership' ? ' Membresía' : ''}</span>
+                <span class="pos-card-icon"><i class="bi ${KIND_ICON[it.kind]}"></i>${KIND_LABEL[it.kind] && it.kind !== 'product' ? ' ' + KIND_LABEL[it.kind] : ''}</span>
                 <span class="pos-card-name">${esc(it.name)}</span>
                 <span class="pos-card-meta">${cardMeta(it)}</span>
-                <span class="pos-card-price">${money(it.price)}</span>
+                <span class="pos-card-price">${money(it.price)}${listPrice(it)}</span>
                 ${inCart ? `<span class="pos-card-qty">×${+inCart.toFixed(2)}</span>` : ''}
             </button>`;
         }).join('');
@@ -144,7 +152,7 @@
         document.querySelectorAll('#pos-items .pos-card').forEach((card) => {
             const it = byKey[card.dataset.key];
             const inCart = qtyInCart(it.key);
-            card.disabled = it.kind === 'product' && inCart >= it.stock;
+            card.disabled = limited(it) && inCart >= it.stock;
 
             let badge = card.querySelector('.pos-card-qty');
             if (inCart && !badge) {
@@ -165,11 +173,11 @@
 
         const existing = state.lines.find((l) => l.key === key);
         if (existing) {
-            if (it.kind === 'membership') { flash(key); return; } // una por venta
-            if (it.kind === 'product' && existing.qty + 1 > it.stock) { flash(key); return; }
+            if (SINGLE.includes(it.kind)) { flash(key); return; } // una por venta
+            if (limited(it) && existing.qty + 1 > it.stock) { flash(key); return; }
             existing.qty += 1;
         } else {
-            if (it.kind === 'product' && it.stock <= 0) return;
+            if (limited(it) && it.stock <= 0) return;
             state.lines.push({
                 key, kind: it.kind, id: it.id, name: it.name, price: it.price,
                 qty: 1, discount: 0, personal_id: '', stock: it.stock, showDisc: false,
@@ -199,8 +207,9 @@
 
     function renderLines() {
         $('pos-lines').innerHTML = state.lines.map((l, i) => {
-            const isMember = l.kind === 'membership';
-            const maxed = l.kind === 'product' && l.qty >= l.stock;
+            // Membresía y paquete: uno por venta y sin profesional (no comisionan al venderse).
+            const isMember = SINGLE.includes(l.kind);
+            const maxed = limited(l) && l.qty >= l.stock;
             return `<div class="pos-line" data-i="${i}">
                 <div>
                     <div class="pos-line-name">${esc(l.name)}
@@ -262,7 +271,7 @@
         const l = state.lines[i];
 
         switch (btn.dataset.act) {
-            case 'plus': if (!(l.kind === 'product' && l.qty + 1 > l.stock)) l.qty += 1; break;
+            case 'plus': if (!(limited(l) && l.qty + 1 > l.stock)) l.qty += 1; break;
             case 'minus': l.qty -= 1; if (l.qty <= 0) state.lines.splice(i, 1); break;
             case 'remove': state.lines.splice(i, 1); break;
             case 'disc': l.showDisc = true; break;
@@ -319,6 +328,7 @@
     function setClient(data) {
         state.client = data;
         state.redeem = 0;
+        state.credit = 0;
         $('pos-client-search').value = '';
         renderClient();
         changed();
@@ -327,6 +337,7 @@
     function clearClient() {
         state.client = null;
         state.redeem = 0;
+        state.credit = 0;
         renderClient();
         changed();
         $('pos-client-search').focus();
@@ -336,9 +347,11 @@
         const c = state.client;
         $('pos-client-pick').classList.toggle('d-none', !!c);
         $('pos-client-card').classList.toggle('d-none', !c);
-        if (!c) { renderPoints(); return; }
+        if (!c) { renderPoints(); renderCredit(); return; }
 
         const m = c.membership;
+        const packages = (c.packages || []).map((p) => `<div class="pos-pkg"><i class="bi bi-ticket-perforated"></i> <strong>${esc(p.name)}</strong> · ${esc(p.expiry)}
+                <div>${p.items.filter((s) => s.remaining > 0).map((s) => `${esc(s.service)}: <strong>${s.remaining}</strong>/${s.included}`).join(' · ')}</div></div>`).join('');
         const sessions = m && m.sessions.length
             ? '<div class="mt-1">' + m.sessions.map((s) => `${esc(s.service)}: <strong>${s.remaining}</strong>/${s.included}`).join(' · ') + '</div>'
             : '';
@@ -353,9 +366,33 @@
             </div>
             ${m ? `<div class="pos-member"><i class="bi bi-award"></i> <strong>${esc(m.plan)}</strong> · vence ${esc(m.ends_on)}
                     ${m.discount > 0 ? ` · ${m.discount} % en ${esc(m.scope.toLowerCase())}` : ''}${sessions}</div>` : ''}
+            ${packages}
+            ${c.credit > 0 ? `<div class="pos-credit-chip"><i class="bi bi-wallet2"></i> Saldo a favor: <strong>${money(c.credit)}</strong></div>` : ''}
         </div>`;
 
         renderPoints();
+        renderCredit();
+    }
+
+    // ------------------------------------------------------------------
+    //  Saldo a favor
+    // ------------------------------------------------------------------
+    function renderCredit() {
+        const box = $('pos-credit');
+        const balance = state.client ? Number(state.client.credit) || 0 : 0;
+        box.classList.toggle('d-none', balance <= 0);
+        if (balance <= 0) return;
+
+        $('credit-info').innerHTML = `Disponible <strong>${money(balance)}</strong>`;
+        const input = $('pos-credit-input');
+        if (document.activeElement !== input) input.value = state.credit || '';
+    }
+
+    /** Lo máximo de saldo que se puede usar: el saldo o el total, lo menor. */
+    function creditMax() {
+        const balance = state.client ? Number(state.client.credit) || 0 : 0;
+        const total = quoteFresh() ? state.quote.total : naiveTotals().total;
+        return Math.max(0, Math.min(balance, total));
     }
 
     // ------------------------------------------------------------------
@@ -402,7 +439,8 @@
         const disc = state.lines.reduce((s, l) => s + l.discount, 0) + state.globalDiscount;
         const total = Math.max(0, subtotal - disc);
         return { subtotal, line_discounts: disc - state.globalDiscount, global_discount: state.globalDiscount,
-                 membership_discount: 0, loyalty_discount: 0, redeem_points: 0, tax: 0, total, tip: state.tip, charge: total + state.tip };
+                 membership_discount: 0, package_discount: 0, loyalty_discount: 0, redeem_points: 0, tax: 0, total,
+                 tip: state.tip, credit_applied: 0, charge: total + state.tip };
     }
 
     function renderTotals() {
@@ -414,13 +452,13 @@
         let html = row('Subtotal', money(t.subtotal));
         if (discounts > 0) html += row('Descuentos', '− ' + money(discounts));
         if (t.membership_discount > 0) html += row('<i class="bi bi-award"></i> Membresía', '− ' + money(t.membership_discount), 'benefit');
+        if (t.package_discount > 0) html += row('<i class="bi bi-ticket-perforated"></i> Sesiones de paquete', '− ' + money(t.package_discount), 'benefit');
         if (t.loyalty_discount > 0) html += row(`<i class="bi bi-stars"></i> Puntos (${t.redeem_points})`, '− ' + money(t.loyalty_discount), 'benefit');
         if (C.taxRate > 0 && t.tax > 0) html += row(`${esc(C.taxLabel)} ${C.taxRate} %${C.taxIncluded ? ' incl.' : ''}`, money(t.tax));
         html += row('Total', money(t.total), 'total');
-        if (t.tip > 0) {
-            html += row('<i class="bi bi-heart"></i> Propina', money(t.tip));
-            html += row('A cobrar', money(t.charge), 'charge');
-        }
+        if (t.tip > 0) html += row('<i class="bi bi-heart"></i> Propina', money(t.tip));
+        if (t.credit_applied > 0) html += row('<i class="bi bi-wallet2"></i> Saldo a favor', '− ' + money(t.credit_applied), 'benefit');
+        if (t.tip > 0 || t.credit_applied > 0) html += row('A cobrar', money(t.charge), 'charge');
 
         $('pos-totals-rows').innerHTML = html;
         $('pos-totals').classList.toggle('loading', !fresh && state.lines.length > 0);
@@ -492,6 +530,11 @@
 
         const ready = state.lines.length > 0 && quoteFresh() && errs.length === 0 && !state.submitting;
         $('pos-submit').disabled = !ready;
+        // Una cotización no necesita forma de pago ni caja: basta con que el carrito sea válido.
+        if ($('pos-save-quote')) {
+            const quoteErrs = quoteFresh() ? state.quote.errors.filter((e) => !/saldo a favor|canje|puntos|propina|elegir el cliente/i.test(e)) : [];
+            $('pos-save-quote').disabled = !(state.lines.length > 0 && quoteFresh() && quoteErrs.length === 0 && !state.submitting);
+        }
         $('pos-submit-label').textContent = state.submitting ? 'Cobrando…'
             : !state.lines.length ? 'Agrega algo para cobrar'
             : 'Cobrar ' + money(quoteFresh() ? state.quote.charge : naiveTotals().charge);
@@ -507,13 +550,17 @@
             branch_id: state.branch || null,
             global_discount: state.globalDiscount,
             redeem_points: state.redeem || 0,
+            credit_amount: state.credit || 0,
             tip: state.tip,
             notes: state.notes || null,
+            quote_id: C.quoteId || null,
             items: state.lines.map((l) => ({
                 service_id: l.kind === 'service' ? l.id : null,
                 product_id: l.kind === 'product' ? l.id : null,
                 membership_plan_id: l.kind === 'membership' ? l.id : null,
-                description: l.kind === 'membership' ? 'Membresía ' + l.name : l.name,
+                combo_id: l.kind === 'combo' ? l.id : null,
+                service_package_id: l.kind === 'package' ? l.id : null,
+                description: l.kind === 'membership' ? 'Membresía ' + l.name : l.kind === 'package' ? 'Paquete ' + l.name : l.name,
                 quantity: l.qty,
                 unit_price: l.price,
                 discount: l.discount,
@@ -540,6 +587,21 @@
         fillHidden();
         state.submitting = true;
         renderCheckout();
+    }
+
+    /** Guarda el carrito como cotización y abre su documento. */
+    function saveQuote() {
+        const btn = $('pos-save-quote');
+        if (!btn || btn.disabled) return;
+        const data = payload();
+        data.redeem_points = 0;
+        data.credit_amount = 0;
+        data.tip = 0;
+        state.submitting = true;
+        renderCheckout();
+        api(C.routes.quoteStore, { json: data })
+            .then((res) => { window.location.href = res.url; })
+            .catch((err) => { state.submitting = false; alertInline(err.message); });
     }
 
     // ------------------------------------------------------------------
@@ -578,6 +640,7 @@
         updateLineAmounts();
         renderTotals();
         renderPoints();
+        renderCredit();
         renderCheckout();
     }
 
@@ -698,6 +761,20 @@
             changed();
         });
 
+        // Saldo a favor
+        $('pos-credit-input').addEventListener('input', (e) => {
+            state.credit = Math.max(0, num(e.target.value));
+            changed();
+        });
+        $('credit-max').addEventListener('click', () => {
+            state.credit = Math.round(creditMax() * 100) / 100;
+            $('pos-credit-input').value = state.credit;
+            changed();
+        });
+
+        // Cotización
+        $('pos-save-quote')?.addEventListener('click', saveQuote);
+
         // Pago
         $('pos-pay').addEventListener('click', (e) => {
             const b = e.target.closest('[data-pay]');
@@ -746,6 +823,8 @@
 
         (o.items || []).forEach((it) => {
             const key = it.membership_plan_id ? 'membership:' + it.membership_plan_id
+                : it.service_package_id ? 'package:' + it.service_package_id
+                : it.combo_id ? 'combo:' + it.combo_id
                 : it.product_id ? 'product:' + it.product_id
                 : it.service_id ? 'service:' + it.service_id : null;
             const cat = byKey[key];
@@ -764,6 +843,7 @@
         state.globalDiscount = num(o.global_discount);
         state.showGlobal = state.globalDiscount > 0;
         state.redeem = parseInt(o.redeem_points, 10) || 0;
+        state.credit = num(o.credit_amount);
         state.tip = num(o.tip);
         state.notes = o.notes || '';
         state.clientName = o.client_name || '';
@@ -775,7 +855,8 @@
 
         if (o.client_id) {
             const redeem = state.redeem;
-            selectClient(o.client_id).then(() => { state.redeem = redeem; changed(); });
+            const credit = state.credit;
+            selectClient(o.client_id).then(() => { state.redeem = redeem; state.credit = credit; changed(); });
         }
     }
 

@@ -24,6 +24,13 @@
                     <button class="btn btn-outline-danger"><i class="bi bi-x-circle"></i> Anular</button>
                 </form>
             @endif
+            @php
+                $poUser = auth()->user();
+                $poCo = $poUser->getCurrentCompany();
+            @endphp
+            @if($order->status === 'recibida' && ($poUser->is_super_admin || ($poCo && $poUser->hasPermissionInCompany('purchase-returns.create', $poCo))))
+                <a href="{{ route('purchase-returns.create', $order) }}" class="btn btn-outline-warning"><i class="bi bi-arrow-return-left"></i> Devolver al proveedor</a>
+            @endif
         </div>
     </div>
 
