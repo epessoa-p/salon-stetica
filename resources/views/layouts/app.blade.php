@@ -136,6 +136,30 @@
                 </div>
 
                 <div class="d-flex align-items-center gap-2">
+                    {{-- Marca rápida de asistencia para quien tiene ficha de personal --}}
+                    @php
+                        $ownPersonal = $currentCompany
+                            ? \App\Models\Personal::where('company_id', $currentCompany->id)->where('user_id', auth()->id())->first()
+                            : null;
+                        $openShift = $ownPersonal
+                            ? \App\Models\Attendance::where('personal_id', $ownPersonal->id)->whereNull('check_out')->latest('check_in')->first()
+                            : null;
+                    @endphp
+                    @if($ownPersonal)
+                        <form action="{{ route('attendance.self') }}" method="POST" class="m-0">
+                            @csrf
+                            @if($openShift)
+                                <button name="action" value="out" class="btn btn-logout" title="En turno desde las {{ $openShift->check_in->format('H:i') }}">
+                                    <i class="bi bi-box-arrow-right"></i><span class="d-none d-md-inline"> Marcar salida</span>
+                                    <span class="d-none d-lg-inline opacity-75">· {{ $openShift->check_in->format('H:i') }}</span>
+                                </button>
+                            @else
+                                <button name="action" value="in" class="btn btn-logout">
+                                    <i class="bi bi-box-arrow-in-right"></i><span class="d-none d-md-inline"> Marcar entrada</span>
+                                </button>
+                            @endif
+                        </form>
+                    @endif
                     <div class="dropdown">
                         <button class="btn btn-icon" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-person-circle"></i>
@@ -172,6 +196,13 @@
         @if($message = session('success'))
             <div class="alert alert-success alert-dismissible fade show" role="alert">
                 <i class="bi bi-check-circle"></i> {{ $message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        @endif
+
+        @if($message = session('warning'))
+            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                <i class="bi bi-exclamation-triangle"></i> {{ $message }}
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         @endif

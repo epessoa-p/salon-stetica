@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Personal extends Model
@@ -45,5 +46,20 @@ class Personal extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function schedules(): HasMany
+    {
+        return $this->hasMany(StaffSchedule::class)->orderBy('weekday')->orderBy('starts_time');
+    }
+
+    public function scheduleExceptions(): HasMany
+    {
+        return $this->hasMany(StaffScheduleException::class)->orderBy('date_from');
+    }
+
+    public function attendances(): HasMany
+    {
+        return $this->hasMany(Attendance::class);
     }
 }

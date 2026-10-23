@@ -23,7 +23,9 @@ use Illuminate\Support\Facades\DB;
  *
  * Decisiones de negocio de Glamora (se muestran también en la pantalla de reglas):
  *  - Base = total de la línea (cantidad × precio − descuento de la línea).
- *    El descuento global de la venta lo asume el salón y la propina va aparte.
+ *    El descuento global, el canje de puntos y el descuento de membresía los
+ *    asume el salón; la propina va aparte. Una sesión incluida en una
+ *    membresía comisiona sobre su valor proporcional (ver baseFor()).
  *  - El monto fijo se paga por unidad (valor × cantidad).
  *  - Anular una venta borra sus comisiones pendientes y, por cada comisión ya
  *    liquidada, genera una comisión negativa pendiente que se descuenta sola
@@ -50,7 +52,7 @@ class CommissionService
             return 0;
         }
 
-        $items = $sale->items()->get();
+        $items = $sale->items()->with('clientMembership')->get();
         $categories = $this->categoriesFor($items);
         $now = now();
         $created = 0;
@@ -68,7 +70,7 @@ class CommissionService
                 continue;
             }
 
-            $base = round((float) $item->total, 2);
+            $base = $this->baseFor($item);
             $amount = $rule->amountFor($base, (float) $item->quantity);
             if ($amount <= 0) {
                 continue;
@@ -108,6 +110,22 @@ class CommissionService
             ->filter(fn (CommissionRule $r) => $r->matches($item, $personalId, $categoryId, $on))
             ->sort(fn (CommissionRule $a, CommissionRule $b) => [$b->priority(), $b->id] <=> [$a->priority(), $a->id])
             ->first();
+    }
+
+    /**
+     * Base de la comisión de una línea:
+     *  - normal: total de la línea + descuento de membresía (ese descuento lo
+     *    asume el salón, no reduce la comisión);
+     *  - sesión incluida en una membresía (se cobró en 0): lo que el salón
+     *    cobró por cada sesión × cantidad.
+     */
+    protected function baseFor(SaleItem $item): float
+    {
+        if ($item->uses_session && $item->clientMembership) {
+            return round((float) $item->clientMembership->session_unit_value * (float) $item->quantity, 2);
+        }
+
+        return round((float) $item->total + (float) $item->membership_discount, 2);
     }
 
     /** Reglas activas de la empresa (sin depender del tenant de la petición). */

@@ -14,10 +14,11 @@ class Appointment extends Model
 
     protected $fillable = [
         'company_id', 'branch_id', 'client_id', 'personal_id', 'service_id',
-        'starts_at', 'ends_at', 'status', 'price', 'notes', 'created_by',
+        'starts_at', 'ends_at', 'status', 'outside_schedule', 'price', 'notes', 'created_by',
     ];
 
     protected $casts = [
+        'outside_schedule' => 'boolean',
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
         'price' => 'decimal:2',

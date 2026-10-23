@@ -11,9 +11,6 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show"><i class="bi bi-check-circle"></i> {{ session('success') }}<button class="btn-close" data-bs-dismiss="alert"></button></div>
-    @endif
     @if($errors->any())
         <div class="alert alert-danger"><ul class="mb-0 ps-3">@foreach($errors->all() as $e)<li>{{ $e }}</li>@endforeach</ul></div>
     @endif
@@ -106,7 +103,12 @@
                                 <label class="form-label small">Ejemplo</label>
                                 <div class="form-control bg-light" id="folio-preview">—</div>
                             </div>
-                            <div class="col-md-7">
+                            <div class="col-md-6">
+                                <label class="form-label small">Tolerancia de tardanza (min)</label>
+                                <input type="number" min="0" max="120" name="attendance_tolerance_minutes" class="form-control no-uppercase" value="{{ old('attendance_tolerance_minutes', $setting->attendance_tolerance_minutes) }}">
+                                <div class="form-text">Llegar dentro de este margen no cuenta como tarde.</div>
+                            </div>
+                            <div class="col-md-6">
                                 <label class="form-label small">Duración base de cita (min)</label>
                                 <input type="number" min="5" max="240" step="5" name="appointment_slot_minutes" class="form-control no-uppercase" value="{{ old('appointment_slot_minutes', $setting->appointment_slot_minutes) }}">
                             </div>

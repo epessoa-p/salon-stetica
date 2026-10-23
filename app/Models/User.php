@@ -11,11 +11,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable, SoftDeletes;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -155,6 +156,11 @@ class User extends Authenticatable
      */
     public function getCurrentCompany(): ?Company
     {
+        // En la API no hay sesión: la empresa la fija el middleware ApiCompany (header X-Company-Id).
+        if (app()->bound('api.company')) {
+            return app('api.company');
+        }
+
         if (auth()->check() && session()->has('current_company_id')) {
             return Company::find(session('current_company_id'));
         }

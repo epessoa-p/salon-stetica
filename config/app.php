@@ -65,7 +65,9 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    // Hora de Bolivia (UTC-4). Antes estaba fijo en 'UTC' e ignoraba el .env:
+    // los logs y las fechas de ventas/caja quedaban 4 horas adelantados.
+    'timezone' => env('APP_TIMEZONE', 'America/La_Paz'),
 
     /*
     |--------------------------------------------------------------------------

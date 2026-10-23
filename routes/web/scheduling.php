@@ -8,6 +8,8 @@ Route::prefix('admin/appointments')->name('appointments.')->middleware('check-pe
     Route::get('/', [AppointmentController::class, 'index'])->name('index');
     Route::get('/calendar', [AppointmentController::class, 'calendar'])->name('calendar');
     Route::get('/events', [AppointmentController::class, 'events'])->name('events');
+    Route::get('/schedule-events', [AppointmentController::class, 'scheduleEvents'])->name('schedule-events');
+    Route::get('/availability', [AppointmentController::class, 'availability'])->name('availability');
     Route::get('/create', [AppointmentController::class, 'create'])->name('create')->middleware('check-permission:appointments.create');
     Route::post('/', [AppointmentController::class, 'store'])->name('store')->middleware('check-permission:appointments.create');
     Route::get('/{appointment}/edit', [AppointmentController::class, 'edit'])->name('edit')->middleware('check-permission:appointments.edit');

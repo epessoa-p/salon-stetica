@@ -45,6 +45,7 @@ class SettingController extends Controller
             'sale_prefix'              => ['required', 'string', 'max:10'],
             'sale_padding'             => ['required', 'integer', 'min:1', 'max:12'],
             'appointment_slot_minutes' => ['required', 'integer', 'min:5', 'max:240'],
+            'attendance_tolerance_minutes' => ['required', 'integer', 'min:0', 'max:120'],
         ]);
 
         $validated['tax_included'] = $request->boolean('tax_included');

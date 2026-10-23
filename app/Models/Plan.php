@@ -21,6 +21,7 @@ class Plan extends Model
         'purchasing' => 'Compras',
         'finance'    => 'Caja y Finanzas',
         'commissions' => 'Comisiones',
+        'loyalty'    => 'Membresías y fidelización',
         'marketing'  => 'Marketing',
     ];
 
@@ -38,6 +39,7 @@ class Plan extends Model
         'suppliers' => 'purchasing', 'purchases' => 'purchasing',
         'cash' => 'finance', 'cajas' => 'finance', 'incomes' => 'finance', 'expenses' => 'finance',
         'commissions' => 'commissions', 'commission-rules' => 'commissions',
+        'memberships' => 'loyalty', 'loyalty' => 'loyalty',
         'marketing' => 'marketing',
         // 'company','users','roles','branches','cargos','personal','reports',
         // 'plans','subscriptions','payments' → administrativos = siempre disponibles.

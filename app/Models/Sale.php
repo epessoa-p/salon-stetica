@@ -16,7 +16,8 @@ class Sale extends Model
     protected $fillable = [
         'company_id', 'branch_id', 'client_id', 'personal_id', 'cash_session_id', 'sale_number',
         'client_name', 'client_phone', 'client_document', 'sale_date',
-        'subtotal', 'tax', 'discount', 'total', 'tip', 'tip_settlement_id', 'payment_method', 'status',
+        'subtotal', 'tax', 'discount', 'membership_discount', 'loyalty_points_redeemed', 'loyalty_discount',
+        'loyalty_points_earned', 'total', 'tip', 'tip_settlement_id', 'payment_method', 'status',
         'notes', 'created_by',
     ];
 
@@ -25,6 +26,10 @@ class Sale extends Model
         'subtotal' => 'decimal:2',
         'tax' => 'decimal:2',
         'discount' => 'decimal:2',
+        'membership_discount' => 'decimal:2',
+        'loyalty_discount' => 'decimal:2',
+        'loyalty_points_redeemed' => 'integer',
+        'loyalty_points_earned' => 'integer',
         'total' => 'decimal:2',
         'tip' => 'decimal:2',
         'deleted_at' => 'datetime',

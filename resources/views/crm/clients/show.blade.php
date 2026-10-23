@@ -23,6 +23,14 @@
             <ul class="nav nav-tabs px-3 pt-2" role="tablist">
                 <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-datos" type="button">Datos</button></li>
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-historial" type="button">Historial</button></li>
+                @if($showMemberships || $showPoints)
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-benefits" type="button">
+                            Membresía y puntos
+                            @if($activeMembership)<span class="badge bg-danger-subtle text-danger-emphasis ms-1"><i class="bi bi-award"></i></span>@endif
+                        </button>
+                    </li>
+                @endif
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-obs" type="button">Observaciones</button></li>
             </ul>
 
@@ -161,6 +169,13 @@
                         @endif
                     @endif
                 </div>
+
+                {{-- Membresía y puntos --}}
+                @if($showMemberships || $showPoints)
+                    <div class="tab-pane fade" id="tab-benefits">
+                        @include('crm.clients._benefits')
+                    </div>
+                @endif
 
                 {{-- Observaciones --}}
                 <div class="tab-pane fade" id="tab-obs">

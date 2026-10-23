@@ -19,9 +19,6 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show no-print"><i class="bi bi-check-circle"></i> {{ session('success') }}<button class="btn-close" data-bs-dismiss="alert"></button></div>
-    @endif
 
     <div class="card border-0 shadow-sm receipt">
         <div class="card-body">

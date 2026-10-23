@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Controllers\Staff\AttendanceController;
 use App\Http\Controllers\Staff\CargoController;
 use App\Http\Controllers\Staff\PersonalController;
+use App\Http\Controllers\Staff\ScheduleController;
 use App\Http\Controllers\Staff\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -39,4 +41,23 @@ Route::prefix('admin/personal')->name('personal.')->group(function () {
     Route::get('/{personal}/edit', [PersonalController::class, 'edit'])->name('edit');
     Route::put('/{personal}', [PersonalController::class, 'update'])->name('update');
     Route::delete('/{personal}', [PersonalController::class, 'destroy'])->name('destroy');
+});
+
+// Horarios del personal (semanal + excepciones)
+Route::prefix('admin/schedules')->name('schedules.')->middleware('check-permission:schedules.view')->group(function () {
+    Route::get('/', [ScheduleController::class, 'index'])->name('index');
+    Route::get('/{personal}', [ScheduleController::class, 'edit'])->name('edit');
+    Route::put('/{personal}', [ScheduleController::class, 'update'])->name('update')->middleware('check-permission:schedules.edit');
+    Route::post('/{personal}/exceptions', [ScheduleController::class, 'storeException'])->name('exceptions.store')->middleware('check-permission:schedules.edit');
+    Route::delete('/{personal}/exceptions/{exception}', [ScheduleController::class, 'destroyException'])->name('exceptions.destroy')->middleware('check-permission:schedules.edit');
+});
+
+// Asistencia
+Route::prefix('admin/attendance')->name('attendance.')->group(function () {
+    Route::get('/', [AttendanceController::class, 'index'])->name('index')->middleware('check-permission:attendance.view');
+    // Sin permiso: cada quien marca y ve lo suyo (se filtra por su ficha de personal).
+    Route::get('/mine', [AttendanceController::class, 'mine'])->name('mine');
+    Route::post('/self', [AttendanceController::class, 'self'])->name('self');
+    Route::post('/mark', [AttendanceController::class, 'mark'])->name('mark')->middleware('check-permission:attendance.mark');
+    Route::put('/{attendance}', [AttendanceController::class, 'update'])->name('update')->middleware('check-permission:attendance.edit');
 });

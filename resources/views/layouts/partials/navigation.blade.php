@@ -13,8 +13,8 @@
             'color' => '#ec4899',
             'items' => [
                 ['label' => 'Clientes',    'icon' => 'bi-person-lines-fill', 'built' => true, 'route' => 'clients.index', 'pattern' => 'clients.*'],
-                ['label' => 'Membresías',  'icon' => 'bi-award',             'built' => false],
-                ['label' => 'Fidelización','icon' => 'bi-gift',              'built' => false],
+                ['label' => 'Membresías',  'icon' => 'bi-award',             'built' => true, 'route' => 'memberships.index', 'pattern' => 'memberships.*', 'feature' => 'loyalty'],
+                ['label' => 'Fidelización','icon' => 'bi-stars',             'built' => true, 'route' => 'loyalty.index',     'pattern' => 'loyalty.*',     'feature' => 'loyalty'],
             ],
         ],
         [
@@ -125,8 +125,8 @@
                 ['label' => 'Sucursales',       'icon' => 'bi-diagram-2',            'built' => true, 'route' => 'branches.index', 'pattern' => 'branches.*'],
                 ['label' => 'Personal',         'icon' => 'bi-person-vcard',         'built' => true, 'route' => 'personal.index', 'pattern' => 'personal.*'],
                 ['label' => 'Cargos',           'icon' => 'bi-briefcase',            'built' => true, 'route' => 'cargos.index',   'pattern' => 'cargos.*'],
-                ['label' => 'Horarios',         'icon' => 'bi-clock',                'built' => false],
-                ['label' => 'Asistencia',       'icon' => 'bi-calendar2-check',      'built' => false],
+                ['label' => 'Horarios',         'icon' => 'bi-clock',                'built' => true, 'route' => 'schedules.index',  'pattern' => 'schedules.*'],
+                ['label' => 'Asistencia',       'icon' => 'bi-calendar2-check',      'built' => true, 'route' => 'attendance.index', 'pattern' => 'attendance.index'],
                 ['label' => 'Métodos de pago',  'icon' => 'bi-credit-card-2-front',  'built' => true, 'route' => 'payment-methods.index', 'pattern' => 'payment-methods.*'],
                 ['label' => 'Preferencias',     'icon' => 'bi-sliders',              'built' => true, 'route' => 'settings.edit', 'pattern' => 'settings.*'],
             ],
@@ -156,6 +156,14 @@
             <i class="bi bi-house"></i> Dashboard
         </a>
     </li>
+    {{-- Para quien tiene ficha de personal: marcar y ver su asistencia, sin permisos. --}}
+    @if($co && \App\Models\Personal::where('company_id', $co->id)->where('user_id', $u->id)->exists())
+        <li class="nav-item">
+            <a class="nav-link app-link {{ request()->routeIs('attendance.mine') ? 'active' : '' }}" href="{{ route('attendance.mine') }}">
+                <i class="bi bi-person-check"></i> Mi asistencia
+            </a>
+        </li>
+    @endif
 </ul>
 
 {{-- Secciones colapsables --}}
@@ -175,6 +183,8 @@
         $items = array_filter($section['items'], function ($i) use ($u, $co) {
             // Ítems "Próx." (no construidos) siempre se muestran deshabilitados.
             if (!($i['built'] ?? true)) return true;
+            // Ítem de un módulo de plan distinto al de su sección (p. ej. Membresías dentro de Clientes).
+            if (isset($i['feature']) && !$u->is_super_admin && !($co && $co->planAllows($i['feature']))) return false;
             // Visibilidad explícita (users/roles/sistema) manda.
             if (array_key_exists('visible', $i)) return (bool) $i['visible'];
             // Deriva el permiso <módulo>.view desde el nombre de ruta.

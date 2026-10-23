@@ -5,7 +5,11 @@ namespace App\Http\Controllers\Crm;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
 use App\Models\Client;
+use App\Models\ClientMembership;
 use App\Models\CompanySetting;
+use App\Models\LoyaltyMovement;
+use App\Services\LoyaltyService;
+use App\Services\MembershipService;
 use App\Models\Company;
 use App\Models\Sale;
 use Illuminate\Http\Request;
@@ -77,7 +81,41 @@ class ClientController extends Controller
         $this->authorizeClient($client);
         $client->load('company');
 
-        return view('crm.clients.show', ['client' => $client] + $this->history($client));
+        return view('crm.clients.show', ['client' => $client] + $this->history($client) + $this->benefits($client));
+    }
+
+    /**
+     * Membresías y puntos del cliente. Solo si el plan incluye el módulo
+     * `loyalty` y el usuario puede ver membresías o fidelización.
+     */
+    protected function benefits(Client $client): array
+    {
+        $user = auth()->user();
+        $company = $client->company;
+        $can = fn (string $permission) => $user->is_super_admin
+            || ($company && $company->planAllows('loyalty') && $user->hasPermissionInCompany($permission, $company));
+
+        $showMemberships = $can('memberships.view');
+        $showPoints = $can('loyalty.view');
+        $memberships = app(MembershipService::class);
+        $loyalty = app(LoyaltyService::class);
+
+        $history = $showMemberships
+            ? ClientMembership::with('sessions.service')->where('client_id', $client->id)->orderByDesc('starts_on')->get()
+            : collect();
+        $active = $history->first(fn ($m) => $m->isActiveOn());
+
+        return [
+            'showMemberships'   => $showMemberships,
+            'showPoints'        => $showPoints,
+            'activeMembership'  => $active ? $memberships->summary($active) : null,
+            'membershipHistory' => $history,
+            'points'            => $showPoints ? $loyalty->summary($client->company_id, $client->id) : null,
+            'pointsEnabled'     => $showPoints && $loyalty->enabled($company),
+            'pointMovements'    => $showPoints
+                ? LoyaltyMovement::with('sale')->where('client_id', $client->id)->orderByDesc('created_at')->orderByDesc('id')->limit(15)->get()
+                : collect(),
+        ];
     }
 
     /**

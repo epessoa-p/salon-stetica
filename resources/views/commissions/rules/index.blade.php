@@ -25,9 +25,6 @@
     @if($noCompany)
         <div class="alert alert-info d-flex align-items-center gap-2"><i class="bi bi-info-circle-fill"></i> Las reglas se configuran dentro de una empresa.</div>
     @else
-        @if(session('success'))
-            <div class="alert alert-success alert-dismissible fade show"><i class="bi bi-check-circle"></i> {{ session('success') }}<button class="btn-close" data-bs-dismiss="alert"></button></div>
-        @endif
 
         @if(!$hasActive)
             <div class="alert alert-warning d-flex align-items-center gap-2">
@@ -109,7 +106,8 @@
                             </tbody>
                         </table>
                         <ul class="ps-3 mb-0">
-                            <li class="mb-1"><strong>Base:</strong> el total de la línea (cantidad × precio − descuento de esa línea). El descuento global de la venta lo asume el salón.</li>
+                            <li class="mb-1"><strong>Base:</strong> el total de la línea (cantidad × precio − descuento de esa línea). El descuento global, el canje de puntos y el descuento de membresía los asume el salón.</li>
+                            <li class="mb-1"><strong>Sesión incluida en una membresía:</strong> se cobra en 0, pero comisiona sobre lo que el salón cobró por esa sesión (precio de la membresía ÷ sesiones incluidas).</li>
                             <li class="mb-1"><strong>Monto fijo:</strong> se paga por unidad. Tres manicuras con una regla de 20 pagan 60.</li>
                             <li class="mb-1"><strong>Propina:</strong> no es comisión; va íntegra al profesional principal y se paga aparte.</li>
                             <li class="mb-1"><strong>Sin regla no hay comisión:</strong> no existe un porcentaje por defecto.</li>

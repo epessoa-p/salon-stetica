@@ -21,8 +21,9 @@
         <a href="{{ route('appointments.index') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Volver</a>
     </div>
 
-    @if($errors->any())
-        <div class="alert alert-danger"><ul class="mb-0 ps-3">@foreach($errors->all() as $e)<li>{{ $e }}</li>@endforeach</ul></div>
+    @php $generalErrors = collect($errors->getMessages())->except('outside_schedule')->flatten(); @endphp
+    @if($generalErrors->isNotEmpty())
+        <div class="alert alert-danger"><ul class="mb-0 ps-3">@foreach($generalErrors as $e)<li>{{ $e }}</li>@endforeach</ul></div>
     @endif
 
     <form action="{{ $action }}" method="POST">
@@ -60,10 +61,10 @@
 
                     <div class="col-md-6">
                         <label class="form-label">Especialista</label>
-                        <select name="personal_id" class="form-select">
+                        <select name="personal_id" id="personal_id" class="form-select">
                             <option value="">Sin asignar</option>
                             @foreach($specialists as $sp)
-                                <option value="{{ $sp->id }}" {{ (string) old('personal_id', $appointment?->personal_id) === (string) $sp->id ? 'selected' : '' }}>{{ $sp->full_name }}</option>
+                                <option value="{{ $sp->id }}" {{ (string) old('personal_id', $appointment?->personal_id ?? request('personal_id')) === (string) $sp->id ? 'selected' : '' }}>{{ $sp->full_name }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -80,7 +81,7 @@
 
                     <div class="col-md-5">
                         <label class="form-label">Fecha y hora <span class="text-danger">*</span></label>
-                        <input type="datetime-local" name="starts_at" class="form-control no-uppercase" value="{{ $startValue }}" required>
+                        <input type="datetime-local" name="starts_at" id="starts_at" class="form-control no-uppercase" value="{{ $startValue }}" required>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Duración (min)</label>
@@ -89,6 +90,19 @@
                     <div class="col-md-4">
                         <label class="form-label">Precio</label>
                         <input type="number" step="0.01" min="0" name="price" id="price" class="form-control no-uppercase" value="{{ old('price', $appointment?->price) }}">
+                    </div>
+
+                    <div class="col-12">
+                        <div id="availability" class="d-none small rounded-3 border p-2"></div>
+                        @error('outside_schedule')
+                            <div class="alert alert-warning mt-2 mb-0 py-2">
+                                <div><i class="bi bi-exclamation-triangle-fill"></i> {{ $message }}</div>
+                                <div class="form-check mt-1">
+                                    <input class="form-check-input" type="checkbox" name="force_outside" value="1" id="force_outside">
+                                    <label class="form-check-label fw-semibold" for="force_outside">Agendar de todos modos</label>
+                                </div>
+                            </div>
+                        @enderror
                     </div>
 
                     <div class="col-md-6">
@@ -129,7 +143,69 @@
             // Solo autocompleta si el campo está vacío, para no pisar valores manuales.
             if (p && price && !price.value) price.value = p;
             if (d && duration && !duration.value) duration.value = d;
+            refresh();
         });
+
+        // ---- Disponibilidad del profesional en la fecha elegida ----
+        var person = document.getElementById('personal_id');
+        var startsAt = document.getElementById('starts_at');
+        var panel = document.getElementById('availability');
+        var url = @json(route('appointments.availability'));
+        var ignore = @json($appointment?->id);
+        var days = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+        function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+        function minutes(hhmm) { var p = hhmm.split(':'); return +p[0] * 60 + +p[1]; }
+
+        function refresh() {
+            if (!person.value || !startsAt.value) { panel.classList.add('d-none'); return; }
+            var date = startsAt.value.slice(0, 10);
+            fetch(url + '?personal_id=' + person.value + '&date=' + date + (ignore ? '&ignore=' + ignore : ''), { headers: { Accept: 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) { if (d) render(d, date); })
+                .catch(function () { panel.classList.add('d-none'); });
+        }
+
+        function render(d, date) {
+            var dt = new Date(date + 'T00:00');
+            var head = '<strong>' + esc(d.name) + '</strong> · ' + days[dt.getDay()] + ' ' + date.split('-').reverse().join('/') + ': ';
+            // Misma regla que el servidor: duración indicada, si no la del servicio, si no 30 min.
+            var serviceDuration = parseInt(service.options[service.selectedIndex].getAttribute('data-duration'), 10);
+            var from = minutes(startsAt.value.slice(11, 16));
+            var to = from + (parseInt(duration.value, 10) || serviceDuration || 30);
+            var state = 'info', schedule;
+
+            if (d.off) {
+                schedule = '<span class="text-danger">no trabaja (' + esc(d.off) + ')</span>';
+                state = 'warning';
+            } else if (!d.configured && !d.special) {
+                schedule = '<span class="text-muted">sin horario cargado (sin restricción)</span>';
+            } else if (!d.blocks.length) {
+                schedule = '<span class="text-danger">no trabaja ese día</span>';
+                state = 'warning';
+            } else {
+                schedule = d.blocks.map(function (b) { return b.start + '–' + b.end; }).join(' y ') + (d.special ? ' <span class="badge bg-warning text-dark">horario especial</span>' : '');
+                var fits = d.blocks.some(function (b) { return from >= minutes(b.start) && to <= minutes(b.end); });
+                if (!fits) { schedule += ' · <span class="text-danger">la hora elegida queda fuera</span>'; state = 'warning'; }
+            }
+
+            var clash = false;
+            var busy = d.busy.length
+                ? '<div class="mt-1 text-muted">Ocupado: ' + d.busy.map(function (b) {
+                    var hit = from < minutes(b.end) && to > minutes(b.start);
+                    if (hit) clash = true;
+                    return '<span class="badge ' + (hit ? 'bg-danger' : 'bg-light text-dark border') + '">' + b.start + '–' + b.end + '</span> ' + esc(b.label);
+                }).join(' · ') + '</div>'
+                : '<div class="mt-1 text-muted">Sin citas ese día.</div>';
+            if (clash) state = 'danger';
+
+            panel.className = 'small rounded-3 border p-2 border-' + state + ' bg-' + state + '-subtle';
+            panel.innerHTML = '<i class="bi bi-clock"></i> ' + head + schedule + busy
+                + (clash ? '<div class="mt-1 text-danger fw-semibold"><i class="bi bi-x-octagon"></i> Choca con otra cita: no se podrá guardar.</div>' : '');
+        }
+
+        [person, startsAt, duration].forEach(function (el) { el && el.addEventListener('change', refresh); });
+        refresh();
     })();
 </script>
 @endpush
