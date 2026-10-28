@@ -1,4 +1,15 @@
 {{-- Pestaña "Paquetes y saldo" de la ficha del cliente --}}
+@if($account && ($account['enabled'] || $account['debt'] > 0))
+    <div class="alert {{ $account['overdue'] ? 'alert-danger' : ($account['debt'] > 0 ? 'alert-warning' : 'alert-light border') }} d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span>
+            <i class="bi bi-journal-text"></i> Cuenta corriente:
+            <strong>debe {{ $setting->money($account['debt']) }}</strong>
+            @if($account['enabled']) · límite {{ $setting->money($account['limit']) }} · disponible {{ $setting->money($account['available']) }}@endif
+            @if($account['overdue']) · <strong>tiene cuentas vencidas</strong>@endif
+        </span>
+        <a href="{{ route('receivables.client', $client) }}" class="btn btn-sm btn-outline-dark"><i class="bi bi-cash-coin"></i> Estado de cuenta</a>
+    </div>
+@endif
 <div class="row g-3">
     @if($showPackages)
         <div class="col-lg-7">

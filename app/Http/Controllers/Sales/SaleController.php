@@ -16,6 +16,7 @@ use App\Services\CreditService;
 use App\Services\LoyaltyService;
 use App\Services\MembershipService;
 use App\Services\PackageService;
+use App\Services\ReceivableService;
 use App\Services\SaleReturnService;
 use App\Services\StockService;
 use DomainException;
@@ -37,6 +38,7 @@ class SaleController extends Controller
         protected PackageService $packages,
         protected CreditService $credit,
         protected StockService $stock,
+        protected ReceivableService $receivables,
     ) {
     }
 
@@ -61,7 +63,7 @@ class SaleController extends Controller
         $this->authorizeSale($sale);
         $sale->load([
             'items.service', 'items.product', 'items.specialist', 'items.membershipPlan', 'items.clientMembership',
-            'items.combo', 'items.servicePackage', 'items.clientPackage',
+            'items.combo', 'items.servicePackage', 'items.clientPackage', 'items.promotion', 'receivable.payments', 'coupon',
             'client', 'session.register', 'specialist', 'tipSettlement', 'returns.creator', 'quote',
         ]);
 
@@ -127,46 +129,11 @@ class SaleController extends Controller
             return back()->withErrors(['error' => 'La venta tiene devoluciones: ya no se puede anular. Registra una devolución por lo que falta.']);
         }
 
-        [$reversals, $canceled, $credit] = DB::transaction(function () use ($sale) {
-            $sale->update(['status' => 'anulada']);
-
-            $reversals = $this->commissions->reverseForVoidedSale($sale);
-            $canceled = $this->memberships->cancelForVoidedSale($sale) + $this->packages->cancelForVoidedSale($sale);
-            $this->loyalty->reverseForVoidedSale($sale);
-            $credit = $this->credit->reverseForVoidedSale($sale);
-
-            foreach ($sale->items()->whereNotNull('product_id')->get() as $item) {
-                $this->stock->move((int) $item->product_id, (float) $item->quantity, 'entrada', $sale->company_id, $sale->sale_number, 'Anulación venta ' . $sale->sale_number);
-            }
-
-            // Sale de caja solo lo que entró en dinero (lo pagado con saldo vuelve como saldo).
-            $session = $sale->session;
-            if ($session && $session->isOpen() && $sale->paidInMoney() > 0) {
-                $session->movements()->create([
-                    'type'           => 'egreso',
-                    'amount'         => $sale->paidInMoney(),
-                    'concept'        => 'Anulación venta ' . $sale->sale_number,
-                    'payment_method' => $sale->payment_method,
-                    'reference'      => (string) $sale->id,
-                    'created_by'     => auth()->id(),
-                ]);
-
-                // La propina se devuelve solo si todavía no se le pagó al profesional.
-                if ((float) $sale->tip > 0 && !$sale->tip_settlement_id) {
-                    $session->movements()->create([
-                        'type'           => 'egreso',
-                        'amount'         => $sale->tip,
-                        'concept'        => 'Anulación propina venta ' . $sale->sale_number,
-                        'category'       => 'Propinas',
-                        'payment_method' => $sale->payment_method,
-                        'reference'      => (string) $sale->id,
-                        'created_by'     => auth()->id(),
-                    ]);
-                }
-            }
-
-            return [$reversals, $canceled, $credit];
-        });
+        try {
+            [$reversals, $canceled, $credit] = DB::transaction(fn () => $this->voidInTransaction($sale));
+        } catch (DomainException $e) {
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
 
         $message = 'Venta anulada.';
         if ($reversals > 0) {
@@ -179,11 +146,62 @@ class SaleController extends Controller
         if ($credit > 0) {
             $message .= ' El saldo a favor usado (' . number_format($credit, 2) . ') volvió al cliente.';
         }
+        if ($sale->on_credit) {
+            $message .= ' Se canceló su cuenta por cobrar.';
+        }
         if ((float) $sale->tip > 0 && $sale->tip_settlement_id) {
             $message .= ' La propina ya se había pagado al profesional; regularízala con él.';
         }
 
         return back()->with('success', $message);
+    }
+
+    /** Anulación dentro de la transacción. Lanza DomainException si no se puede. */
+    protected function voidInTransaction(Sale $sale): array
+    {
+        // Primero la deuda: si ya tiene abonos, no se anula nada.
+        $this->receivables->cancelForVoidedSale($sale);
+        $sale->update(['status' => 'anulada']);
+
+        $reversals = $this->commissions->reverseForVoidedSale($sale);
+        $canceled = $this->memberships->cancelForVoidedSale($sale) + $this->packages->cancelForVoidedSale($sale);
+        $this->loyalty->reverseForVoidedSale($sale);
+        $credit = $this->credit->reverseForVoidedSale($sale);
+
+        foreach ($sale->items()->whereNotNull('product_id')->get() as $item) {
+            $this->stock->move((int) $item->product_id, (float) $item->quantity, 'entrada', $sale->company_id, $sale->sale_number, 'Anulación venta ' . $sale->sale_number);
+        }
+
+        $session = $sale->session;
+        if ($session && $session->isOpen()) {
+            // Sale de caja solo lo que entró en dinero (lo pagado con saldo
+            // vuelve como saldo; lo fiado nunca entró).
+            if ($sale->paidInMoney() > 0) {
+                $session->movements()->create([
+                    'type'           => 'egreso',
+                    'amount'         => $sale->paidInMoney(),
+                    'concept'        => 'Anulación venta ' . $sale->sale_number,
+                    'payment_method' => $sale->payment_method,
+                    'reference'      => (string) $sale->id,
+                    'created_by'     => auth()->id(),
+                ]);
+            }
+
+            // La propina se devuelve solo si todavía no se le pagó al profesional.
+            if ((float) $sale->tip > 0 && !$sale->tip_settlement_id) {
+                $session->movements()->create([
+                    'type'           => 'egreso',
+                    'amount'         => $sale->tip,
+                    'concept'        => 'Anulación propina venta ' . $sale->sale_number,
+                    'category'       => 'Propinas',
+                    'payment_method' => $sale->payment_method,
+                    'reference'      => (string) $sale->id,
+                    'created_by'     => auth()->id(),
+                ]);
+            }
+        }
+
+        return [$reversals, $canceled, $credit];
     }
 
     // ---- Helpers ----
@@ -218,11 +236,15 @@ class SaleController extends Controller
             'discount'                => round($quote['line_discounts'] + $quote['global_discount'], 2),
             'membership_discount'     => $quote['membership_discount'],
             'package_discount'        => $quote['package_discount'],
+            'promotion_discount'      => $quote['promotion_discount'],
+            'coupon_id'               => $quote['coupon']['id'] ?? null,
+            'coupon_discount'         => $quote['coupon_discount'],
             'loyalty_points_redeemed' => $quote['redeem_points'],
             'loyalty_discount'        => $quote['loyalty_discount'],
             'total'                   => $quote['total'],
             'tip'                     => $quote['tip'],
             'credit_applied'          => $quote['credit_applied'],
+            'on_credit'               => $quote['on_credit'],
             'quote_id'                => $this->convertibleQuoteId($validated['quote_id'] ?? null, $companyId),
             'payment_method'          => $validated['payment_method'],
             'status'                  => 'completada',
@@ -270,6 +292,8 @@ class SaleController extends Controller
                 'discount'             => $line['discount'],
                 'membership_discount'  => $line['membership_discount'],
                 'package_discount'     => $line['package_discount'],
+                'promotion_id'         => $line['promotion_id'],
+                'promotion_discount'   => $line['promotion_discount'],
                 'total'                => $line['total'],
             ]);
 
@@ -305,11 +329,18 @@ class SaleController extends Controller
             $this->credit->useInSale($sale, $quote['credit_applied']);
         }
 
+        if ($quote['on_credit']) {
+            $this->receivables->createFromSale($sale, $quote['pending'], $quote['due_date']);
+        }
+
         // Ingreso en caja si hay sesión abierta: solo lo que entra en dinero
         // (lo pagado con saldo a favor no entra). La propina va en un
         // movimiento aparte: entra a la caja pero no es venta del salón.
         if ($session) {
-            $money = round($quote['total'] - $quote['credit_applied'], 2);
+            // A crédito entra solo el anticipo (menos la propina, que va aparte).
+            $money = $quote['on_credit']
+                ? round($quote['down_payment'] - $quote['tip'], 2)
+                : round($quote['total'] - $quote['credit_applied'], 2);
             if ($money > 0) {
                 $session->movements()->create([
                     'type'           => 'ingreso',

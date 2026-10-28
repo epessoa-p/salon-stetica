@@ -130,7 +130,8 @@ class CommissionService
             return round((float) $item->clientMembership->session_unit_value * (float) $item->quantity, 2);
         }
 
-        return round((float) $item->total + (float) $item->membership_discount, 2);
+        // Membresía y promoción los asume el salón: no bajan la comisión.
+        return round((float) $item->total + (float) $item->membership_discount + (float) $item->promotion_discount, 2);
     }
 
     /** Reglas activas de la empresa (sin depender del tenant de la petición). */

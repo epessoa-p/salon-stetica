@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Scheduling\AppointmentController;
+use App\Http\Controllers\Scheduling\ReminderController;
 use Illuminate\Support\Facades\Route;
 
 // Módulo Agenda y Citas
@@ -17,3 +18,6 @@ Route::prefix('admin/appointments')->name('appointments.')->middleware('check-pe
     Route::post('/{appointment}/status', [AppointmentController::class, 'updateStatus'])->name('status')->middleware('check-permission:appointments.edit');
     Route::delete('/{appointment}', [AppointmentController::class, 'destroy'])->name('destroy')->middleware('check-permission:appointments.delete');
 });
+
+// Recordatorios de citas por WhatsApp
+Route::get('admin/reminders', [ReminderController::class, 'index'])->name('reminders.index')->middleware('check-permission:reminders.view');

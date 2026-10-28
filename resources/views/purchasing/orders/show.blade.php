@@ -42,6 +42,19 @@
         </div></div></div>
         <div class="col-md-6"><div class="card border-0 shadow-sm h-100"><div class="card-body">
             <div class="text-muted small">Total</div><div class="fw-semibold fs-5">{{ number_format($order->total, 2) }}</div>
+            <div class="small">
+                @if($order->isOnCredit())
+                    <i class="bi bi-clock-history"></i> A crédito · {{ $order->credit_days }} días
+                    @if($order->payable)
+                        · <a href="{{ route('payables.show', $order->payable) }}">saldo {{ number_format($order->payable->balance(), 2) }}</a>
+                        <span class="badge {{ $order->payable->stateBadge() }}">{{ $order->payable->stateLabel() }}</span>
+                    @elseif($order->status === 'pendiente')
+                        · la deuda se registra al recibirla
+                    @endif
+                @else
+                    <i class="bi bi-cash"></i> Contado
+                @endif
+            </div>
         </div></div></div>
     </div>
 

@@ -14,14 +14,15 @@ class SaleItem extends Model
 
     protected $fillable = [
         'sale_id', 'product_id', 'service_id', 'personal_id', 'membership_plan_id', 'client_membership_id',
-        'combo_id', 'service_package_id', 'client_package_id', 'uses_session', 'description', 'quantity',
-        'returned_quantity', 'unit_price', 'discount', 'membership_discount', 'package_discount', 'total',
+        'combo_id', 'service_package_id', 'client_package_id', 'promotion_id', 'uses_session', 'description', 'quantity',
+        'returned_quantity', 'unit_price', 'discount', 'membership_discount', 'package_discount', 'promotion_discount', 'total',
     ];
 
     protected $casts = [
         'quantity' => 'decimal:2',
         'returned_quantity' => 'decimal:2',
         'package_discount' => 'decimal:2',
+        'promotion_discount' => 'decimal:2',
         'unit_price' => 'decimal:2',
         'discount' => 'decimal:2',
         'membership_discount' => 'decimal:2',
@@ -39,6 +40,11 @@ class SaleItem extends Model
     public function clientMembership(): BelongsTo
     {
         return $this->belongsTo(ClientMembership::class);
+    }
+
+    public function promotion(): BelongsTo
+    {
+        return $this->belongsTo(Promotion::class)->withTrashed();
     }
 
     public function combo(): BelongsTo

@@ -25,6 +25,8 @@ use Illuminate\Support\Facades\DB;
  *    línea se cancelan.
  *  - Comisiones: un negativo pendiente proporcional a lo devuelto. Puntos: se
  *    quita la parte proporcional de lo ganado y se devuelve la de lo canjeado.
+ *  - En una venta a crédito, lo devuelto se descuenta primero de la deuda
+ *    pendiente; solo el resto se reintegra en dinero o saldo.
  *  - La propina no se devuelve: es del profesional.
  *  - Una venta con devoluciones ya no se anula (se devuelve el resto).
  */
@@ -37,6 +39,7 @@ class SaleReturnService
         protected MembershipService $memberships,
         protected PackageService $packages,
         protected CreditService $credit,
+        protected ReceivableService $receivables,
     ) {
     }
 
@@ -61,7 +64,8 @@ class SaleReturnService
     /** Cuánto de la venta se puede devolver todavía en dinero (el resto, solo como saldo). */
     public function cashRefundable(Sale $sale): float
     {
-        $cashRefunded = (float) $sale->returns()->where('refund_method', 'cash')->sum('total');
+        // Lo que salió en dinero: el total de cada devolución menos lo que fue a la deuda.
+        $cashRefunded = (float) $sale->returns()->where('refund_method', 'cash')->sum(DB::raw('total - applied_to_receivable'));
 
         return max(0, round($sale->paidInMoney() - $cashRefunded, 2));
     }
@@ -90,15 +94,19 @@ class SaleReturnService
             if ($total > round((float) $sale->total - (float) $sale->returned_total, 2) + 0.01) {
                 throw new DomainException('El reintegro supera lo que queda por devolver de la venta.');
             }
-            if ($method === 'credit' && !$sale->client_id) {
+            // Venta a crédito: primero se descuenta de lo que el cliente debe.
+            $applied = $this->receivables->applyReturn($sale, $total);
+            $rest = round($total - $applied, 2);
+
+            if ($rest > 0 && $method === 'credit' && !$sale->client_id) {
                 throw new DomainException('Para devolver como saldo a favor, la venta debe tener un cliente registrado.');
             }
-            if ($method === 'cash' && $total > $this->cashRefundable($sale) + 0.01) {
-                throw new DomainException('Esta venta se pagó en parte con saldo a favor: en dinero se pueden devolver hasta '
-                    . number_format($this->cashRefundable($sale), 2) . '. El resto, como saldo a favor.');
+            if ($rest > 0 && $method === 'cash' && $rest > $this->cashRefundable($sale) + 0.01) {
+                throw new DomainException('En dinero se pueden devolver hasta ' . number_format($this->cashRefundable($sale), 2)
+                    . ' (lo que el cliente pagó en dinero). El resto, como saldo a favor.');
             }
 
-            $session = $this->cashSession($sale, $method, $total, $data['cash_session_id'] ?? null);
+            $session = $this->cashSession($sale, $method, $rest, $data['cash_session_id'] ?? null);
             $setting = CompanySetting::current($sale->company_id);
             $count = SaleReturn::withoutGlobalScopes()->where('company_id', $sale->company_id)->count() + 1;
 
@@ -113,6 +121,7 @@ class SaleReturnService
                 'payment_method'  => $method === 'cash' ? ($data['payment_method'] ?? $sale->payment_method) : null,
                 'cash_session_id' => $session?->id,
                 'total'           => $total,
+                'applied_to_receivable' => $applied,
                 'notes'           => $data['notes'] ?? null,
                 'created_by'      => auth()->id(),
             ]);
@@ -144,13 +153,13 @@ class SaleReturnService
             $this->commissions->reverseForReturn($sale, $quantities, $return->return_number);
             $this->adjustPoints($sale, $return);
 
-            if ($method === 'credit' && $total > 0) {
-                $this->credit->fromReturn($return);
+            if ($method === 'credit' && $rest > 0) {
+                $this->credit->fromReturn($return, $rest);
             }
-            if ($session && $total > 0) {
+            if ($session && $rest > 0) {
                 $session->movements()->create([
                     'type'           => 'egreso',
-                    'amount'         => $total,
+                    'amount'         => $rest,
                     'concept'        => 'Devolución ' . $return->return_number . ' · venta ' . $sale->sale_number,
                     'category'       => 'Devoluciones',
                     'payment_method' => $return->payment_method,

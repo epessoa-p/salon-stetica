@@ -7,6 +7,7 @@ use App\Models\InventoryMovement;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
+use App\Services\PayableService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -67,6 +68,8 @@ class PurchaseOrderController extends Controller
             'supplier_id'        => ['required', 'exists:suppliers,id'],
             'entry_date'         => ['nullable', 'date'],
             'notes'              => ['nullable', 'string'],
+            'payment_type'       => ['nullable', 'in:contado,credito'],
+            'credit_days'        => ['nullable', 'required_if:payment_type,credito', 'integer', 'min:0', 'max:365'],
             'items'              => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.quantity'   => ['required', 'numeric', 'min:0.01'],
@@ -105,6 +108,8 @@ class PurchaseOrderController extends Controller
                     'entry_date'   => $validated['entry_date'] ?? now(),
                     'notes'        => $validated['notes'] ?? null,
                     'status'       => 'pendiente',
+                    'payment_type' => $validated['payment_type'] ?? 'contado',
+                    'credit_days'  => ($validated['payment_type'] ?? 'contado') === 'credito' ? (int) $validated['credit_days'] : null,
                     'total'        => $total,
                     'created_by'   => auth()->id(),
                 ]);
@@ -126,7 +131,7 @@ class PurchaseOrderController extends Controller
     public function show(PurchaseOrder $purchaseOrder)
     {
         $this->authorizeOrder($purchaseOrder);
-        $purchaseOrder->load(['provider', 'items.product']);
+        $purchaseOrder->load(['provider', 'items.product', 'payable.payments']);
 
         return view('purchasing.orders.show', ['order' => $purchaseOrder]);
     }
@@ -168,9 +173,15 @@ class PurchaseOrderController extends Controller
             }
 
             $purchaseOrder->update(['status' => 'recibida']);
+
+            // A crédito: la deuda con el proveedor nace al recibir la mercadería.
+            if ($purchaseOrder->isOnCredit()) {
+                app(PayableService::class)->createFromOrder($purchaseOrder);
+            }
         });
 
-        return redirect()->route('purchase-orders.show', $purchaseOrder)->with('success', 'Orden recibida. Stock actualizado.');
+        return redirect()->route('purchase-orders.show', $purchaseOrder)->with('success', 'Orden recibida. Stock actualizado.'
+            . ($purchaseOrder->isOnCredit() ? ' Quedó registrada la cuenta por pagar al proveedor.' : ''));
     }
 
     public function void(PurchaseOrder $purchaseOrder)

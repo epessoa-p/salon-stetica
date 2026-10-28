@@ -65,6 +65,11 @@
                         <label class="form-label">¿Cómo nos conoció?</label>
                         <input type="text" name="source" class="form-control" value="{{ old('source', $client?->source) }}" placeholder="Recomendación, redes sociales, etc.">
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Límite de crédito</label>
+                        <input type="number" name="credit_limit" min="0" step="0.01" class="form-control no-uppercase" value="{{ old('credit_limit', $client?->credit_limit) }}" placeholder="Vacío = no se le fía">
+                        <div class="form-text">Hasta cuánto puede deber por ventas a crédito.</div>
+                    </div>
                     <div class="col-12">
                         <label class="form-label">Dirección</label>
                         <input type="text" name="address" class="form-control" value="{{ old('address', $client?->address) }}">

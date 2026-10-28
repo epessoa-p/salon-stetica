@@ -25,10 +25,12 @@ use Illuminate\Validation\Rule;
  *   bruto = cantidad × precio
  *   − descuento manual de la línea
  *   − beneficio prepagado: sesión de membresía o de paquete (la línea queda
- *     en 0) o, si no hay sesión, el % de la membresía
+ *     en 0) o, si no hay sesión, el % de la membresía o la promoción del día
+ *     (la que más descuente: no se suman)
  * y sobre el total de la venta:
- *   − descuento global − canje de puntos → gravado → impuesto → total
- * Lo que se cobra: total + propina − saldo a favor.
+ *   − descuento global − cupón − canje de puntos → gravado → impuesto → total
+ * Lo que se cobra: total + propina − saldo a favor. En una venta a crédito
+ * se cobra solo el anticipo y el resto queda como cuenta por cobrar.
  *
  * Un combo es una línea del carrito que al cobrar se desarma en sus
  * componentes; su precio se reparte según el precio de lista de cada uno.
@@ -42,6 +44,8 @@ class CheckoutService
         protected LoyaltyService $loyalty,
         protected PackageService $packages,
         protected CreditService $credit,
+        protected ReceivableService $receivables,
+        protected CouponService $coupons,
     ) {
     }
 
@@ -59,7 +63,11 @@ class CheckoutService
             'payment_method'  => [$required, 'string', 'max:50', Rule::in(array_keys(PaymentMethod::optionsFor($companyId)))],
             'global_discount' => ['nullable', 'numeric', 'min:0'],
             'redeem_points'   => ['nullable', 'integer', 'min:0'],
+            'coupon_code'     => ['nullable', 'string', 'max:40'],
             'credit_amount'   => ['nullable', 'numeric', 'min:0'],
+            'on_credit'       => ['nullable', 'boolean'],
+            'down_payment'    => ['nullable', 'numeric', 'min:0'],
+            'due_days'        => ['nullable', 'integer', 'min:1', 'max:365'],
             'tip'             => ['nullable', 'numeric', 'min:0'],
             'notes'           => ['nullable', 'string'],
             'quote_id'        => ['nullable', 'integer'],
@@ -124,8 +132,11 @@ class CheckoutService
         $combos = Combo::withoutGlobalScopes()->whereNull('deleted_at')->with(['items.service', 'items.product'])
             ->where('company_id', $companyId)->whereIn('id', $ids('combo_id'))->get()->keyBy('id');
 
+        // Promociones del día (módulo Marketing).
+        $promotions = $company->planAllows('marketing') ? $this->coupons->promotionsOn($companyId) : collect();
+
         $lines = [];
-        $subtotal = $lineDiscounts = $membershipDiscount = $packageDiscount = 0.0;
+        $subtotal = $lineDiscounts = $membershipDiscount = $packageDiscount = $promotionDiscount = 0.0;
         $productNeeds = []; // product_id => cantidad que pide el carrito
 
         foreach ($items as $i => $item) {
@@ -197,11 +208,26 @@ class CheckoutService
                 $badge = '−' . rtrim(rtrim(number_format((float) $membership->discount_percent, 2), '0'), '.') . ' % membresía';
             }
 
-            $total = max(0, round($gross - $manual - $memberDiscount - $prepaid, 2));
+            // Promoción automática: no se suma a la membresía, se queda la mayor.
+            $promoDiscount = 0.0;
+            $promotionId = null;
+            if (!$usesSession && in_array($kind, ['service', 'product'], true) && $promotions->isNotEmpty()) {
+                $sid = $kind === 'service' ? (int) $item['service_id'] : null;
+                [$promo, $amount] = $this->coupons->bestPromotion($promotions, $kind, $sid, $sid ? ($services[$sid]->service_category_id ?? null) : null, $gross - $manual, $qty);
+                if ($promo && $amount > $memberDiscount) {
+                    $promoDiscount = $amount;
+                    $promotionId = $promo->id;
+                    $memberDiscount = 0.0;
+                    $badge = $promo->name . ' (−' . $promo->valueLabel($setting->currency_symbol) . ')';
+                }
+            }
+
+            $total = max(0, round($gross - $manual - $memberDiscount - $prepaid - $promoDiscount, 2));
             $subtotal += $gross;
             $lineDiscounts += $manual;
             $membershipDiscount += $memberDiscount;
             $packageDiscount += $prepaid;
+            $promotionDiscount += $promoDiscount;
 
             $components = [];
             if ($combo) {
@@ -229,6 +255,8 @@ class CheckoutService
                 'discount'             => $manual,
                 'membership_discount'  => $memberDiscount,
                 'package_discount'     => $prepaid,
+                'promotion_id'         => $promotionId,
+                'promotion_discount'   => $promoDiscount,
                 'uses_session'         => $usesSession,
                 'client_membership_id' => ($membership && !$clientPackageId && ($usesSession || $memberDiscount > 0)) ? $membership->id : null,
                 'client_package_id'    => $clientPackageId,
@@ -240,9 +268,13 @@ class CheckoutService
 
         $errors = array_merge($errors, $this->stockErrors($productNeeds, $companyId));
 
-        $afterLines = max(0, round($subtotal - $lineDiscounts - $membershipDiscount - $packageDiscount, 2));
+        $afterLines = max(0, round($subtotal - $lineDiscounts - $membershipDiscount - $packageDiscount - $promotionDiscount, 2));
         $globalDiscount = min($afterLines, round((float) ($data['global_discount'] ?? 0), 2));
         $payable = round($afterLines - $globalDiscount, 2);
+
+        // Cupón: sobre las líneas que cubre, después del descuento global.
+        [$couponDiscount, $couponInfo] = $this->applyCoupon($data, $company, $client, $lines, $payable, $errors);
+        $payable = round($payable - $couponDiscount, 2);
 
         // Canje de puntos: actúa como descuento global (lo asume el salón).
         $points = ['enabled' => $loyaltyOn && (bool) $client];
@@ -293,6 +325,33 @@ class CheckoutService
             }
         }
 
+        // Venta a crédito: el cliente paga un anticipo (opcional, cubre la
+        // propina) y el resto queda como cuenta por cobrar.
+        $chargeAll = round($total + $tip - $creditApplied, 2);
+        $onCredit = !empty($data['on_credit']);
+        $downPayment = $onCredit ? round((float) ($data['down_payment'] ?? 0), 2) : $chargeAll;
+        $pending = 0.0;
+        $dueDate = null;
+        if ($onCredit) {
+            $dueDate = today()->addDays((int) ($data['due_days'] ?? $setting->receivable_default_days))->toDateString();
+            if (!$company->planAllows('finance')) {
+                $errors[] = 'El plan de la empresa no incluye cuentas por cobrar: no se puede vender a crédito.';
+            } elseif (!$client) {
+                $errors[] = 'Para vender a crédito hay que elegir el cliente.';
+            } elseif ($downPayment > $chargeAll + 0.001) {
+                $errors[] = 'El anticipo no puede superar lo que se cobra.';
+            } elseif ($downPayment + 0.001 < $tip) {
+                $errors[] = 'En una venta a crédito la propina se paga en el anticipo.';
+            } else {
+                $pending = round($chargeAll - $downPayment, 2);
+                if ($pending <= 0) {
+                    $errors[] = 'El anticipo cubre todo: desmarca «Venta a crédito».';
+                } elseif ($error = $this->receivables->creditError($client, $pending)) {
+                    $errors[] = $error;
+                }
+            }
+        }
+
         return [
             'lines'               => $lines,
             'subtotal'            => round($subtotal, 2),
@@ -300,6 +359,9 @@ class CheckoutService
             'global_discount'     => $globalDiscount,
             'membership_discount' => round($membershipDiscount, 2),
             'package_discount'    => round($packageDiscount, 2),
+            'promotion_discount'  => round($promotionDiscount, 2),
+            'coupon_discount'     => $couponDiscount,
+            'coupon'              => $couponInfo,
             'redeem_points'       => $loyaltyDiscount > 0 ? $redeemPoints : 0,
             'loyalty_discount'    => $loyaltyDiscount,
             'gravado'             => $gravado,
@@ -307,7 +369,13 @@ class CheckoutService
             'total'               => $total,
             'tip'                 => $tip,
             'credit_applied'      => $creditApplied,
-            'charge'              => round($total + $tip - $creditApplied, 2),
+            'charge'              => $chargeAll,
+            'on_credit'           => $onCredit,
+            'down_payment'        => $onCredit ? $downPayment : 0.0,
+            'pending'             => $pending,
+            'due_date'            => $dueDate,
+            // Lo que se cobra ahora: todo, o solo el anticipo si es a crédito.
+            'charge_now'          => $onCredit ? $downPayment : $chargeAll,
             'points_to_earn'      => ($loyaltyOn && $client) ? $setting->pointsFor($total) : 0,
             'client'              => $client ? $this->clientSummary($client, $membership, $points, $creditBalance) : null,
             'errors'              => array_values(array_unique($errors)),
@@ -357,6 +425,45 @@ class CheckoutService
         return $out;
     }
 
+    /**
+     * Valida el cupón escrito en el POS y devuelve [descuento, datos del cupón].
+     * Un cupón de "servicios" o "productos" no cubre combos, membresías ni paquetes.
+     */
+    protected function applyCoupon(array $data, Company $company, ?Client $client, array $lines, float $payable, array &$errors): array
+    {
+        $code = trim((string) ($data['coupon_code'] ?? ''));
+        if ($code === '') {
+            return [0.0, null];
+        }
+
+        $coupon = $company->planAllows('marketing') ? $this->coupons->find($company->id, $code) : null;
+        if (!$coupon) {
+            $errors[] = 'El cupón ' . mb_strtoupper($code) . ' no existe.';
+
+            return [0.0, null];
+        }
+
+        $eligible = collect($lines)->filter(fn ($l) => match ($coupon->applies_to) {
+            'services' => $l['kind'] === 'service',
+            'products' => $l['kind'] === 'product',
+            default    => true,
+        })->sum('total');
+
+        [$discount, $error] = $this->coupons->evaluate($coupon, $client, $payable, min($payable, (float) $eligible));
+        if ($error) {
+            $errors[] = $error;
+
+            return [0.0, null];
+        }
+
+        return [$discount, [
+            'id'    => $coupon->id,
+            'code'  => $coupon->code,
+            'name'  => $coupon->name,
+            'value' => $coupon->valueLabel(CompanySetting::current($company->id)->currency_symbol),
+        ]];
+    }
+
     /** Primer paquete del cliente (el que vence antes) con sesiones para el servicio. */
     protected function packageWithSessions($clientPackages, array $packageLeft, int $serviceId, float $qty)
     {
@@ -390,6 +497,7 @@ class CheckoutService
                 ->map(fn ($p) => $this->packages->summary($p))->values()->all(),
             'points'     => $points,
             'credit'     => $creditBalance ?? $this->credit->balance($client->company_id, $client->id),
+            'account'    => $company && $company->planAllows('finance') ? $this->receivables->summary($client) : null,
         ];
     }
 

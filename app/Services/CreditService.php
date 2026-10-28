@@ -22,8 +22,8 @@ class CreditService
             ->sum('amount'), 2);
     }
 
-    /** Saldo generado por una devolución. */
-    public function fromReturn(SaleReturn $return): ClientCreditMovement
+    /** Saldo generado por una devolución (lo que no se descontó de una deuda). */
+    public function fromReturn(SaleReturn $return, ?float $amount = null): ClientCreditMovement
     {
         return ClientCreditMovement::create([
             'company_id'     => $return->company_id,
@@ -31,7 +31,7 @@ class CreditService
             'sale_id'        => $return->sale_id,
             'sale_return_id' => $return->id,
             'type'           => 'return',
-            'amount'         => (float) $return->total,
+            'amount'         => round($amount ?? (float) $return->total, 2),
             'notes'          => 'Devolución ' . $return->return_number,
             'created_by'     => auth()->id(),
         ]);

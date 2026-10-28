@@ -24,7 +24,7 @@
             'items' => [
                 ['label' => 'Calendario',    'icon' => 'bi-calendar-week',  'built' => true, 'route' => 'appointments.calendar', 'pattern' => 'appointments.calendar'],
                 ['label' => 'Citas',         'icon' => 'bi-calendar-check', 'built' => true, 'route' => 'appointments.index',    'pattern' => 'appointments.index'],
-                ['label' => 'Recordatorios', 'icon' => 'bi-bell',           'built' => false],
+                ['label' => 'Recordatorios', 'icon' => 'bi-bell',           'built' => true, 'route' => 'reminders.index', 'pattern' => 'reminders.*'],
             ],
         ],
         [
@@ -92,8 +92,8 @@
                 ['label' => 'Arqueos',          'icon' => 'bi-clipboard-check',  'built' => true, 'route' => 'cash-sessions.index', 'pattern' => 'cash-sessions.*'],
                 ['label' => 'Ingresos',         'icon' => 'bi-arrow-down-circle','built' => true, 'route' => 'incomes.index',  'pattern' => 'incomes.*'],
                 ['label' => 'Gastos',           'icon' => 'bi-arrow-up-circle',  'built' => true, 'route' => 'expenses.index', 'pattern' => 'expenses.*'],
-                ['label' => 'Cuentas x cobrar', 'icon' => 'bi-wallet2',          'built' => false],
-                ['label' => 'Cuentas x pagar',  'icon' => 'bi-credit-card',      'built' => false],
+                ['label' => 'Cuentas x cobrar', 'icon' => 'bi-wallet2',          'built' => true, 'route' => 'receivables.index', 'pattern' => 'receivables.*'],
+                ['label' => 'Cuentas x pagar',  'icon' => 'bi-credit-card',      'built' => true, 'route' => 'payables.index',    'pattern' => 'payables.*'],
             ],
         ],
         [
@@ -109,11 +109,14 @@
             'icon'  => 'bi-megaphone',
             'color' => '#e11d48',
             'items' => [
-                ['label' => 'Campañas',    'icon' => 'bi-broadcast',          'built' => false],
-                ['label' => 'Plantillas',  'icon' => 'bi-envelope-paper',     'built' => false],
-                ['label' => 'Cupones',     'icon' => 'bi-ticket-perforated',  'built' => false],
-                ['label' => 'Cumpleaños',  'icon' => 'bi-cake2',              'built' => false],
-                ['label' => 'Promociones', 'icon' => 'bi-percent',           'built' => false],
+                ['label' => 'Campañas',    'icon' => 'bi-broadcast',          'built' => true, 'route' => 'marketing.campaigns.index', 'pattern' => 'marketing.campaigns.*'],
+                ['label' => 'Cumpleaños',  'icon' => 'bi-cake2',              'built' => true, 'route' => 'marketing.birthdays',       'pattern' => 'marketing.birthdays'],
+                ['label' => 'Plantillas',  'icon' => 'bi-envelope-paper',     'built' => true, 'route' => 'marketing.templates.index', 'pattern' => 'marketing.templates.*'],
+                // Cupones y promociones tienen permisos propios (el resto usa marketing.view).
+                ['label' => 'Cupones',     'icon' => 'bi-ticket-perforated',  'built' => true, 'route' => 'marketing.coupons.index',   'pattern' => 'marketing.coupons.*',
+                 'visible' => $u->is_super_admin || ($co && $u->hasPermissionInCompany('coupons.view', $co))],
+                ['label' => 'Promociones', 'icon' => 'bi-percent',            'built' => true, 'route' => 'marketing.promotions.index', 'pattern' => 'marketing.promotions.*',
+                 'visible' => $u->is_super_admin || ($co && $u->hasPermissionInCompany('promotions.view', $co))],
             ],
         ],
         [

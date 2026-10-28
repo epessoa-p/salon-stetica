@@ -30,6 +30,7 @@ return [
         'Venta de productos',
         'Aporte de socio',
         'Devolución de proveedor',
+        'Cobros de cuentas',
         'Otros ingresos',
     ],
 
@@ -37,6 +38,7 @@ return [
         'Alquiler',
         'Servicios básicos',
         'Insumos',
+        'Pago a proveedores',
         'Sueldos',
         'Comisiones',
         'Publicidad',

@@ -23,6 +23,9 @@
         'requireCash'      => (bool) $setting->require_cash_session,
         'canCreateClient'  => $canCreateClient,
         'canQuote'         => $canQuote,
+        'sellsOnCredit'    => $sellsOnCredit,
+        'sellsCoupons'     => $sellsCoupons,
+        'creditDays'       => (int) $setting->receivable_default_days,
         'quoteId'          => old('quote_id', ($fromQuote['id'] ?? null)),
         'csrf'             => csrf_token(),
         'routes'           => [
@@ -45,7 +48,11 @@
             'branch_id'       => old('branch_id'),
             'global_discount' => old('global_discount'),
             'redeem_points'   => old('redeem_points'),
+            'coupon_code'     => old('coupon_code'),
             'credit_amount'   => old('credit_amount'),
+            'on_credit'       => old('on_credit'),
+            'down_payment'    => old('down_payment'),
+            'due_days'        => old('due_days'),
             'tip'             => old('tip'),
             'notes'           => old('notes'),
         ] : ($fromQuote['old'] ?? null),
@@ -201,6 +208,27 @@
                         <div class="pos-quick" id="pos-quick"></div>
                         <div class="pos-change" id="pos-change"></div>
                     </div>
+                    @if($sellsOnCredit)
+                        <div class="form-check form-switch mt-2">
+                            <input class="form-check-input" type="checkbox" id="pos-on-credit">
+                            <label class="form-check-label small fw-semibold" for="pos-on-credit"><i class="bi bi-journal-text"></i> Venta a crédito</label>
+                        </div>
+                        <div class="pos-credit-sale d-none" id="pos-credit-sale">
+                            <div class="d-flex gap-2 align-items-center flex-wrap">
+                                <label for="pos-down" class="small text-muted text-nowrap mb-0">Anticipo</label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">{{ $setting->currency_symbol }}</span>
+                                    <input type="number" id="pos-down" class="form-control text-end no-uppercase" min="0" step="0.5" value="0">
+                                </div>
+                                <label for="pos-due" class="small text-muted text-nowrap mb-0">Vence en</label>
+                                <div class="input-group input-group-sm" style="max-width: 120px;">
+                                    <input type="number" id="pos-due" class="form-control text-end no-uppercase" min="1" max="365" value="{{ (int) $setting->receivable_default_days }}">
+                                    <span class="input-group-text">días</span>
+                                </div>
+                            </div>
+                            <div class="small mt-1" id="pos-credit-info"></div>
+                        </div>
+                    @endif
                 </div>
 
                 {{-- Caja y opciones --}}
@@ -411,6 +439,8 @@
     .pos-badge.package { background: color-mix(in srgb, var(--pkg) 15%, #fff); color: #065f46; }
     .pos-pkg { margin-top: .4rem; padding: .4rem .6rem; border-radius: 6px; font-size: .78rem; background: color-mix(in srgb, var(--pkg) 8%, #fff); border: 1px solid color-mix(in srgb, var(--pkg) 25%, #fff); }
     .pos-credit-chip { margin-top: .4rem; font-size: .78rem; color: #1d4ed8; }
+    .pos-account { margin-top: .4rem; font-size: .78rem; }
+    .pos-credit-sale { margin-top: .4rem; padding: .5rem .6rem; border-radius: 6px; background: #fff7ed; border: 1px solid #fed7aa; }
     .pos-stepper { display: inline-flex; align-items: center; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
     .pos-stepper button { border: 0; background: #f9fafb; width: 26px; height: 26px; line-height: 1; font-weight: 700; color: #374151; }
     .pos-stepper button:hover:not(:disabled) { background: #eef0f2; }

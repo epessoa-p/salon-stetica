@@ -81,7 +81,21 @@ class ClientController extends Controller
         $this->authorizeClient($client);
         $client->load('company');
 
-        return view('crm.clients.show', ['client' => $client] + $this->history($client) + $this->benefits($client) + $this->prepaid($client));
+        return view('crm.clients.show', ['client' => $client] + $this->history($client) + $this->benefits($client) + $this->prepaid($client) + $this->photos($client));
+    }
+
+    /** Fotos antes/después (módulo Clientes, con permiso). */
+    protected function photos(Client $client): array
+    {
+        $user = auth()->user();
+        $company = $client->company;
+        $show = $user->is_super_admin || ($company && $user->hasPermissionInCompany('photos.view', $company));
+
+        return [
+            'showPhotos'    => $show,
+            'photos'        => $show ? \App\Models\ClientPhoto::with('service')->where('client_id', $client->id)->orderByDesc('taken_on')->orderBy('id')->get() : collect(),
+            'photoServices' => $show ? \App\Models\Service::where('company_id', $client->company_id)->where('active', true)->orderBy('name')->get(['id', 'name']) : collect(),
+        ];
     }
 
     /** Paquetes de sesiones y saldo a favor del cliente, según plan y permisos. */
@@ -94,11 +108,13 @@ class ClientController extends Controller
 
         $showPackages = $can('catalog', 'packages.view');
         $showCredit = $can('sales', 'sales.view');
+        $showDebt = $can('finance', 'receivables.view');
         $packages = app(\App\Services\PackageService::class);
 
         return [
             'showPackages'    => $showPackages,
             'showCredit'      => $showCredit,
+            'account'         => $showDebt ? app(\App\Services\ReceivableService::class)->summary($client) : null,
             'clientPackages'  => $showPackages
                 ? \App\Models\ClientPackage::with('items.service')->where('client_id', $client->id)->latest('id')->get()
                     ->map(fn ($p) => ['model' => $p] + $packages->summary($p))
@@ -269,6 +285,8 @@ class ClientController extends Controller
             'address'    => ['nullable', 'string', 'max:255'],
             'source'     => ['nullable', 'string', 'max:255'],
             'notes'      => ['nullable', 'string'],
+            // Vacío = no se le vende a crédito.
+            'credit_limit' => ['nullable', 'numeric', 'min:0'],
             'active'     => ['nullable', 'boolean'],
         ]);
     }

@@ -18,12 +18,13 @@ class PurchaseOrder extends Model
 
     protected $fillable = [
         'company_id', 'supplier_id', 'warehouse_id', 'entry_number', 'supplier',
-        'entry_date', 'notes', 'status', 'total', 'created_by',
+        'entry_date', 'notes', 'status', 'payment_type', 'credit_days', 'total', 'created_by',
     ];
 
     protected $casts = [
         'entry_date' => 'datetime',
         'total' => 'decimal:2',
+        'credit_days' => 'integer',
         'deleted_at' => 'datetime',
     ];
 
@@ -48,6 +49,16 @@ class PurchaseOrder extends Model
     public function items(): HasMany
     {
         return $this->hasMany(PurchaseOrderItem::class, 'entry_id');
+    }
+
+    public function payable(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Payable::class, 'purchase_order_id');
+    }
+
+    public function isOnCredit(): bool
+    {
+        return $this->payment_type === 'credito';
     }
 
     public function statusLabel(): string

@@ -10,6 +10,7 @@ use App\Models\PaymentMethod;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseReturn;
 use App\Models\PurchaseReturnItem;
+use App\Services\PayableService;
 use App\Services\StockService;
 use DomainException;
 use Illuminate\Http\Request;
@@ -26,7 +27,7 @@ use Illuminate\Validation\Rule;
  */
 class PurchaseReturnController extends Controller
 {
-    public function __construct(protected StockService $stock)
+    public function __construct(protected StockService $stock, protected PayableService $payables)
     {
     }
 
@@ -165,6 +166,11 @@ class PurchaseReturnController extends Controller
                 'total'           => $row['total'],
             ]);
             $this->stock->move((int) $row['item']->product_id, -$row['quantity'], 'salida', $order->company_id, $number, 'Devolución a proveedor · OC ' . $order->entry_number);
+        }
+
+        // Nota de crédito sobre una orden a crédito: se descuenta de la deuda.
+        if ($data['refund_method'] === 'credit' && $order->isOnCredit()) {
+            $return->update(['applied_to_payable' => $this->payables->applyReturn($order, $total)]);
         }
 
         // El proveedor devolvió el dinero: entra como ingreso (en caja si se elige una abierta).

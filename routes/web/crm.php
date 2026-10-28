@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\Crm\ClientController;
 use App\Http\Controllers\Crm\ClientMembershipController;
+use App\Http\Controllers\Crm\ClientPhotoController;
 use App\Http\Controllers\Crm\LoyaltyController;
 use App\Http\Controllers\Crm\MembershipPlanController;
+use App\Http\Controllers\Marketing\MessageController;
 use Illuminate\Support\Facades\Route;
 
 // Módulo Clientes (CRM)
@@ -39,3 +41,11 @@ Route::middleware('plan:loyalty')->group(function () {
         Route::post('/adjust', [LoyaltyController::class, 'adjust'])->name('adjust')->middleware('check-permission:loyalty.adjust');
     });
 });
+
+// Fotos antes/después (archivos privados)
+Route::post('admin/clients/{client}/photos', [ClientPhotoController::class, 'store'])->name('clients.photos.store')->middleware('check-permission:photos.create');
+Route::get('admin/photos/{photo}/{size?}', [ClientPhotoController::class, 'image'])->name('photos.image')->where('size', 'full|thumb')->middleware('check-permission:photos.view');
+Route::delete('admin/photos/{photo}', [ClientPhotoController::class, 'destroy'])->name('photos.destroy')->middleware('check-permission:photos.delete');
+
+// Enviar por WhatsApp (recordatorios, cumpleaños, campañas): registra y abre wa.me
+Route::get('admin/messages/send', [MessageController::class, 'send'])->name('messages.send');

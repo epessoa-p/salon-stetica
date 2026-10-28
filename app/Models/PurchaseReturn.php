@@ -15,12 +15,13 @@ class PurchaseReturn extends Model
 
     protected $fillable = [
         'company_id', 'supplier_id', 'purchase_order_id', 'return_number', 'return_date', 'reason',
-        'refund_method', 'cash_movement_id', 'total', 'notes', 'created_by',
+        'refund_method', 'cash_movement_id', 'total', 'applied_to_payable', 'notes', 'created_by',
     ];
 
     protected $casts = [
         'return_date' => 'datetime',
         'total'       => 'decimal:2',
+        'applied_to_payable' => 'decimal:2',
     ];
 
     public const REFUND_METHODS = [

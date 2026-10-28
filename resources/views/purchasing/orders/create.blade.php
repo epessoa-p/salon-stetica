@@ -35,6 +35,25 @@
                         <label class="form-label">Notas</label>
                         <input type="text" name="notes" class="form-control" value="{{ old('notes') }}">
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Pago</label>
+                        <div class="d-flex gap-3 align-items-center flex-wrap">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="payment_type" id="pt-contado" value="contado" @checked(old('payment_type', 'contado') === 'contado')>
+                                <label class="form-check-label" for="pt-contado">Contado</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="payment_type" id="pt-credito" value="credito" @checked(old('payment_type') === 'credito')>
+                                <label class="form-check-label" for="pt-credito">A crédito</label>
+                            </div>
+                            <div class="input-group input-group-sm {{ old('payment_type') === 'credito' ? '' : 'd-none' }}" id="credit-days-wrap" style="width: 170px;">
+                                <span class="input-group-text">Plazo</span>
+                                <input type="number" name="credit_days" class="form-control no-uppercase" min="0" max="365" value="{{ old('credit_days', 30) }}">
+                                <span class="input-group-text">días</span>
+                            </div>
+                        </div>
+                        <div class="form-text">A crédito, al recibir la orden queda la deuda en Cuentas por pagar.</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -80,6 +99,12 @@
 
 @push('scripts')
 <script>
+    // Plazo de crédito: visible solo si la orden es a crédito.
+    document.querySelectorAll('[name="payment_type"]').forEach(function (r) {
+        r.addEventListener('change', function () {
+            document.getElementById('credit-days-wrap').classList.toggle('d-none', r.value !== 'credito' || !r.checked);
+        });
+    });
 (function () {
     var idx = 0;
     var picker = document.getElementById('product-picker');

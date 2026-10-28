@@ -69,7 +69,7 @@
                     </thead>
                     <tbody>
                         @foreach($sale->items as $item)
-                            @php $benefit = (float) $item->membership_discount + (float) $item->package_discount; @endphp
+                            @php $benefit = (float) $item->membership_discount + (float) $item->package_discount + (float) $item->promotion_discount; @endphp
                             <tr>
                                 <td class="ps-3">
                                     {{ $lineName($item) }}
@@ -77,6 +77,7 @@
                                     @if($item->isMembershipSale())<span class="badge bg-danger-subtle text-danger-emphasis">Membresía</span>@endif
                                     @if($item->isPackageSale())<span class="badge bg-success-subtle text-success-emphasis">Paquete</span>@endif
                                     @if($item->combo)<span class="badge bg-info-subtle text-info-emphasis"><i class="bi bi-collection"></i> {{ $item->combo->name }}</span>@endif
+                                    @if((float) $item->promotion_discount > 0)<span class="badge bg-warning-subtle text-warning-emphasis"><i class="bi bi-percent"></i> {{ $item->promotion?->name }}</span>@endif
                                     @if($item->uses_session && $item->clientPackage)
                                         <span class="badge bg-success-subtle text-success-emphasis"><i class="bi bi-ticket-perforated"></i> Sesión de {{ $item->clientPackage->package_name }}</span>
                                     @elseif($item->uses_session)
@@ -104,6 +105,12 @@
                         @if((float) $sale->membership_discount > 0)
                             <tr><td colspan="5" class="text-end text-muted"><i class="bi bi-award"></i> Beneficio de membresía</td><td class="text-end pe-3">−{{ number_format($sale->membership_discount, 2) }}</td></tr>
                         @endif
+                        @if((float) $sale->promotion_discount > 0)
+                            <tr><td colspan="5" class="text-end text-muted"><i class="bi bi-percent"></i> Promociones</td><td class="text-end pe-3">−{{ number_format($sale->promotion_discount, 2) }}</td></tr>
+                        @endif
+                        @if((float) $sale->coupon_discount > 0)
+                            <tr><td colspan="5" class="text-end text-muted"><i class="bi bi-ticket"></i> Cupón {{ $sale->coupon?->code }}</td><td class="text-end pe-3">−{{ number_format($sale->coupon_discount, 2) }}</td></tr>
+                        @endif
                         @if((float) $sale->package_discount > 0)
                             <tr><td colspan="5" class="text-end text-muted"><i class="bi bi-ticket-perforated"></i> Sesiones de paquete (prepagadas)</td><td class="text-end pe-3">−{{ number_format($sale->package_discount, 2) }}</td></tr>
                         @endif
@@ -116,6 +123,12 @@
                         <tr><td colspan="5" class="text-end fw-bold fs-5">Total</td><td class="text-end pe-3 fw-bold fs-5">{{ $setting->money($sale->total) }}</td></tr>
                         @if((float) $sale->credit_applied > 0)
                             <tr><td colspan="5" class="text-end text-muted"><i class="bi bi-wallet2"></i> Pagado con saldo a favor</td><td class="text-end pe-3">{{ number_format($sale->credit_applied, 2) }}</td></tr>
+                        @endif
+                        @if($sale->on_credit && $sale->receivable)
+                            @php $rcv = $sale->receivable; @endphp
+                            <tr><td colspan="5" class="text-end text-muted"><i class="bi bi-journal-text"></i> Venta a crédito · quedó pendiente (vence {{ $rcv->due_date->format('d/m/Y') }})</td><td class="text-end pe-3">{{ number_format($rcv->amount, 2) }}</td></tr>
+                            <tr><td colspan="5" class="text-end">Saldo por cobrar <span class="badge {{ $rcv->stateBadge() }}">{{ $rcv->stateLabel() }}</span>
+                                @if($sale->client)<a href="{{ route('receivables.client', $sale->client) }}" class="small ms-1">estado de cuenta</a>@endif</td><td class="text-end pe-3 fw-semibold">{{ number_format($rcv->balance(), 2) }}</td></tr>
                         @endif
                         @if((float) $sale->returned_total > 0)
                             <tr><td colspan="5" class="text-end text-warning-emphasis"><i class="bi bi-arrow-return-left"></i> Devuelto</td><td class="text-end pe-3 text-warning-emphasis">−{{ number_format($sale->returned_total, 2) }}</td></tr>
@@ -189,6 +202,8 @@
     <div class="t-row"><span>Subtotal</span><span>{{ number_format($sale->subtotal, 2) }}</span></div>
     @if((float) $sale->discount > 0)<div class="t-row"><span>Descuentos</span><span>−{{ number_format($sale->discount, 2) }}</span></div>@endif
     @if((float) $sale->membership_discount > 0)<div class="t-row"><span>Membresía</span><span>−{{ number_format($sale->membership_discount, 2) }}</span></div>@endif
+    @if((float) $sale->promotion_discount > 0)<div class="t-row"><span>Promociones</span><span>−{{ number_format($sale->promotion_discount, 2) }}</span></div>@endif
+    @if((float) $sale->coupon_discount > 0)<div class="t-row"><span>Cupón {{ $sale->coupon?->code }}</span><span>−{{ number_format($sale->coupon_discount, 2) }}</span></div>@endif
     @if((float) $sale->package_discount > 0)<div class="t-row"><span>Paquete</span><span>−{{ number_format($sale->package_discount, 2) }}</span></div>@endif
     @if((float) $sale->loyalty_discount > 0)<div class="t-row"><span>Puntos ({{ $sale->loyalty_points_redeemed }})</span><span>−{{ number_format($sale->loyalty_discount, 2) }}</span></div>@endif
     @if((float) $sale->tax > 0)<div class="t-row"><span>{{ $setting->tax_label }}{{ $setting->tax_included ? ' incl.' : '' }}</span><span>{{ number_format($sale->tax, 2) }}</span></div>@endif
@@ -196,6 +211,7 @@
     @if((float) $sale->tip > 0)<div class="t-row"><span>Propina</span><span>{{ number_format($sale->tip, 2) }}</span></div>@endif
     @if((float) $sale->credit_applied > 0)<div class="t-row"><span>Saldo a favor</span><span>−{{ number_format($sale->credit_applied, 2) }}</span></div>@endif
     <div>Pago: {{ \App\Models\PaymentMethod::label($sale->payment_method) }}</div>
+    @if($sale->on_credit && $sale->receivable)<div class="t-row"><span>A CRÉDITO · saldo</span><span>{{ number_format($sale->receivable->balance(), 2) }}</span></div><div>Vence: {{ $sale->receivable->due_date->format('d/m/Y') }}</div>@endif
     @if($sale->loyalty_points_earned > 0 && !$sale->isVoided())<div>Puntos ganados: {{ $sale->loyalty_points_earned }}</div>@endif
     <div class="t-sep"></div>
     <div class="t-center">{{ $setting->invoice_footer ?: '¡Gracias por tu visita!' }}</div>

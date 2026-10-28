@@ -15,11 +15,12 @@ class Client extends Model
 
     protected $fillable = [
         'company_id', 'full_name', 'id_number', 'phone', 'email', 'birthdate',
-        'gender', 'address', 'source', 'notes', 'active', 'created_by',
+        'gender', 'address', 'source', 'notes', 'credit_limit', 'active', 'created_by',
     ];
 
     protected $casts = [
         'birthdate' => 'date',
+        'credit_limit' => 'decimal:2',
         'active' => 'boolean',
         'deleted_at' => 'datetime',
     ];
@@ -42,6 +43,16 @@ class Client extends Model
     public function packages(): HasMany
     {
         return $this->hasMany(ClientPackage::class);
+    }
+
+    public function photos(): HasMany
+    {
+        return $this->hasMany(ClientPhoto::class);
+    }
+
+    public function receivables(): HasMany
+    {
+        return $this->hasMany(Receivable::class);
     }
 
     public function creditMovements(): HasMany

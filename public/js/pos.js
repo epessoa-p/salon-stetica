@@ -34,8 +34,12 @@
         notes: '',
         globalDiscount: 0,
         showGlobal: false,
+        coupon: '',             // código de cupón escrito por la cajera
         redeem: 0,
         credit: 0,
+        onCredit: false,        // venta a crédito: se cobra solo el anticipo
+        downPayment: 0,
+        dueDays: C.creditDays || 30,
         tip: 0,
         received: '',
         filter: 'all',
@@ -368,10 +372,37 @@
                     ${m.discount > 0 ? ` · ${m.discount} % en ${esc(m.scope.toLowerCase())}` : ''}${sessions}</div>` : ''}
             ${packages}
             ${c.credit > 0 ? `<div class="pos-credit-chip"><i class="bi bi-wallet2"></i> Saldo a favor: <strong>${money(c.credit)}</strong></div>` : ''}
+            ${accountChip(c.account)}
         </div>`;
 
         renderPoints();
         renderCredit();
+    }
+
+    /** Cuenta corriente del cliente: lo que debe y lo que se le puede fiar. */
+    function accountChip(a) {
+        if (!a || (!a.enabled && a.debt <= 0)) return '';
+        const cls = a.overdue ? 'text-danger' : 'text-muted';
+        return `<div class="pos-account ${cls}"><i class="bi bi-journal-text"></i> ${a.debt > 0 ? `Debe <strong>${money(a.debt)}</strong>` : 'Sin deuda'}`
+            + (a.enabled ? ` · puede fiar hasta ${money(a.available)}` : ' · sin crédito habilitado')
+            + (a.overdue ? ' · <strong>tiene cuentas vencidas</strong>' : '') + '</div>';
+    }
+
+    // ------------------------------------------------------------------
+    //  Venta a crédito
+    // ------------------------------------------------------------------
+    function renderCreditSale() {
+        const box = $('pos-credit-sale');
+        if (!box) return;
+        box.classList.toggle('d-none', !state.onCredit);
+        if (!state.onCredit) return;
+
+        const due = new Date();
+        due.setDate(due.getDate() + (parseInt(state.dueDays, 10) || 0));
+        const q = quoteFresh() ? state.quote : null;
+        $('pos-credit-info').innerHTML = q
+            ? `Queda a crédito <strong>${money(q.pending)}</strong> · vence el ${due.toLocaleDateString('es')}`
+            : `Vence el ${due.toLocaleDateString('es')}`;
     }
 
     // ------------------------------------------------------------------
@@ -440,7 +471,9 @@
         const total = Math.max(0, subtotal - disc);
         return { subtotal, line_discounts: disc - state.globalDiscount, global_discount: state.globalDiscount,
                  membership_discount: 0, package_discount: 0, loyalty_discount: 0, redeem_points: 0, tax: 0, total,
-                 tip: state.tip, credit_applied: 0, charge: total + state.tip };
+                 tip: state.tip, credit_applied: 0, charge: total + state.tip,
+                 on_credit: state.onCredit, down_payment: state.downPayment, pending: 0,
+                 charge_now: state.onCredit ? state.downPayment : total + state.tip };
     }
 
     function renderTotals() {
@@ -453,17 +486,25 @@
         if (discounts > 0) html += row('Descuentos', '− ' + money(discounts));
         if (t.membership_discount > 0) html += row('<i class="bi bi-award"></i> Membresía', '− ' + money(t.membership_discount), 'benefit');
         if (t.package_discount > 0) html += row('<i class="bi bi-ticket-perforated"></i> Sesiones de paquete', '− ' + money(t.package_discount), 'benefit');
+        if (t.promotion_discount > 0) html += row('<i class="bi bi-percent"></i> Promociones', '− ' + money(t.promotion_discount), 'benefit');
+        if (t.coupon_discount > 0 && t.coupon) html += row(`<i class="bi bi-ticket"></i> Cupón ${esc(t.coupon.code)}`, '− ' + money(t.coupon_discount), 'benefit');
         if (t.loyalty_discount > 0) html += row(`<i class="bi bi-stars"></i> Puntos (${t.redeem_points})`, '− ' + money(t.loyalty_discount), 'benefit');
         if (C.taxRate > 0 && t.tax > 0) html += row(`${esc(C.taxLabel)} ${C.taxRate} %${C.taxIncluded ? ' incl.' : ''}`, money(t.tax));
         html += row('Total', money(t.total), 'total');
         if (t.tip > 0) html += row('<i class="bi bi-heart"></i> Propina', money(t.tip));
         if (t.credit_applied > 0) html += row('<i class="bi bi-wallet2"></i> Saldo a favor', '− ' + money(t.credit_applied), 'benefit');
         if (t.tip > 0 || t.credit_applied > 0) html += row('A cobrar', money(t.charge), 'charge');
+        if (t.on_credit) {
+            html += row('<i class="bi bi-journal-text"></i> Anticipo (se cobra ahora)', money(t.charge_now), 'charge');
+            html += row('Queda a crédito', money(t.pending || 0));
+        }
 
         $('pos-totals-rows').innerHTML = html;
         $('pos-totals').classList.toggle('loading', !fresh && state.lines.length > 0);
-        $('pos-mobile-total').textContent = money(t.charge);
-        renderCash(t.charge);
+        // Lo que se cobra ahora (a crédito, solo el anticipo).
+        const now = t.charge_now ?? t.charge;
+        $('pos-mobile-total').textContent = money(now);
+        renderCash(now);
     }
 
     function renderPay() {
@@ -537,7 +578,8 @@
         }
         $('pos-submit-label').textContent = state.submitting ? 'Cobrando…'
             : !state.lines.length ? 'Agrega algo para cobrar'
-            : 'Cobrar ' + money(quoteFresh() ? state.quote.charge : naiveTotals().charge);
+            : state.onCredit ? 'Registrar a crédito · cobra ' + money(quoteFresh() ? (state.quote.charge_now ?? state.downPayment) : state.downPayment)
+            : 'Cobrar ' + money(quoteFresh() ? (state.quote.charge_now ?? state.quote.charge) : naiveTotals().charge);
     }
 
     function payload() {
@@ -550,7 +592,11 @@
             branch_id: state.branch || null,
             global_discount: state.globalDiscount,
             redeem_points: state.redeem || 0,
+            coupon_code: state.coupon || null,
             credit_amount: state.credit || 0,
+            on_credit: state.onCredit ? 1 : 0,
+            down_payment: state.onCredit ? state.downPayment : null,
+            due_days: state.onCredit ? state.dueDays : null,
             tip: state.tip,
             notes: state.notes || null,
             quote_id: C.quoteId || null,
@@ -597,6 +643,7 @@
         data.redeem_points = 0;
         data.credit_amount = 0;
         data.tip = 0;
+        data.on_credit = 0;
         state.submitting = true;
         renderCheckout();
         api(C.routes.quoteStore, { json: data })
@@ -641,6 +688,7 @@
         renderTotals();
         renderPoints();
         renderCredit();
+        renderCreditSale();
         renderCheckout();
     }
 
@@ -745,9 +793,21 @@
             $('pos-gd-input').focus();
         });
         $('pos-totals').addEventListener('input', (e) => {
+            if (e.target.id === 'pos-coupon-input') {
+                e.target.value = e.target.value.toUpperCase().replace(/\s+/g, '');
+                state.coupon = e.target.value;
+                changed();
+                return;
+            }
             if (e.target.id !== 'pos-gd-input') return;
             state.globalDiscount = Math.max(0, num(e.target.value));
             changed();
+        });
+        $('pos-totals').addEventListener('click', (e) => {
+            if (!e.target.closest('[data-act="coupon"]')) return;
+            $('pos-coupon').classList.remove('d-none');
+            e.target.closest('[data-act="coupon"]').classList.add('d-none');
+            $('pos-coupon-input').focus();
         });
         $('pos-points').addEventListener('input', (e) => {
             if (e.target.id !== 'pos-redeem') return;
@@ -774,6 +834,11 @@
 
         // Cotización
         $('pos-save-quote')?.addEventListener('click', saveQuote);
+
+        // Venta a crédito
+        $('pos-on-credit')?.addEventListener('change', (e) => { state.onCredit = e.target.checked; changed(); });
+        $('pos-down')?.addEventListener('input', (e) => { state.downPayment = Math.max(0, num(e.target.value)); changed(); });
+        $('pos-due')?.addEventListener('input', (e) => { state.dueDays = Math.max(1, parseInt(e.target.value, 10) || 1); changed(); });
 
         // Pago
         $('pos-pay').addEventListener('click', (e) => {
@@ -841,9 +906,18 @@
         state.cashSession = o.cash_session_id || '';
         state.branch = o.branch_id || '';
         state.globalDiscount = num(o.global_discount);
+        state.coupon = o.coupon_code || '';
         state.showGlobal = state.globalDiscount > 0;
         state.redeem = parseInt(o.redeem_points, 10) || 0;
         state.credit = num(o.credit_amount);
+        state.onCredit = o.on_credit === '1' || o.on_credit === 1 || o.on_credit === true;
+        state.downPayment = num(o.down_payment);
+        if (o.due_days) state.dueDays = parseInt(o.due_days, 10) || state.dueDays;
+        if ($('pos-on-credit')) {
+            $('pos-on-credit').checked = state.onCredit;
+            $('pos-down').value = state.downPayment;
+            $('pos-due').value = state.dueDays;
+        }
         state.tip = num(o.tip);
         state.notes = o.notes || '';
         state.clientName = o.client_name || '';
@@ -864,6 +938,11 @@
         // Estructura fija de totales: el descuento global no se redibuja al escribir.
         $('pos-totals').innerHTML = `<div id="pos-totals-rows"></div>
             <button type="button" class="pos-link mt-1" data-act="global">+ Descuento global</button>
+            ${C.sellsCoupons ? '<button type="button" class="pos-link mt-1 ms-3" data-act="coupon">+ Cupón</button>' : ''}
+            <div class="d-flex justify-content-between align-items-center mt-1 d-none" id="pos-coupon">
+                <span class="small text-muted"><i class="bi bi-ticket"></i> Cupón</span>
+                <input type="text" id="pos-coupon-input" class="form-control form-control-sm text-end fw-semibold" style="width: 140px; letter-spacing: .04em;" maxlength="40" placeholder="CÓDIGO">
+            </div>
             <div class="d-flex justify-content-between align-items-center mt-1 d-none" id="pos-gd">
                 <span class="small text-muted">Descuento global</span>
                 <div class="input-group input-group-sm" style="width: 140px;">
@@ -879,6 +958,11 @@
         restoreOld();
 
         $('pos-principal').value = state.principal;
+        if (state.coupon && $('pos-coupon')) {
+            $('pos-coupon').classList.remove('d-none');
+            document.querySelector('[data-act="coupon"]')?.classList.add('d-none');
+            $('pos-coupon-input').value = state.coupon;
+        }
         if (state.showGlobal) {
             $('pos-gd').classList.remove('d-none');
             document.querySelector('[data-act="global"]').classList.add('d-none');

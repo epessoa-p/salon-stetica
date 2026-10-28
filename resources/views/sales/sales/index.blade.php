@@ -44,6 +44,7 @@
                                     <td class="text-center">
                                         <span class="badge {{ $sale->status === 'completada' ? 'bg-success' : 'bg-danger' }}">{{ ucfirst($sale->status) }}</span>
                                         @if((float) $sale->returned_total > 0)<span class="badge bg-warning text-dark">Devolución</span>@endif
+                                        @if($sale->on_credit)<span class="badge bg-info text-dark">Crédito</span>@endif
                                     </td>
                                     <td class="text-end pe-3">
                                         <a href="{{ route('sales.show', $sale) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i> Ver</a>

@@ -30,8 +30,19 @@ class MeController extends ApiController
                 'appointments_edit'   => $company->planAllows('scheduling') && $this->can('appointments.edit'),
                 'clients_view'    => $company->planAllows('crm') && $this->can('clients.view'),
                 'clients_create'  => $company->planAllows('crm') && $this->can('clients.create'),
+                'clients_edit'    => $company->planAllows('crm') && $this->can('clients.edit'),
+                'reminders'       => $company->planAllows('scheduling') && $this->can('reminders.view'),
+                'birthdays'       => $company->planAllows('marketing') && $this->can('marketing.view'),
+                'schedule'        => (bool) $personal,
+                // Gerencia: panel si ve al menos ventas, agenda general, caja o asistencia del equipo.
+                'dashboard'       => collect(app(ManagementController::class)->sections())->only(['sales', 'agenda', 'cash', 'team', 'receivables'])->contains(true),
+                'receivables'     => $company->planAllows('finance') && $this->can('receivables.view'),
+                'receivables_collect' => $company->planAllows('finance') && $this->can('receivables.collect'),
                 'attendance'      => (bool) $personal,
                 'commissions_own' => $company->planAllows('commissions') && (bool) $personal,
+                'photos_view'     => $company->planAllows('crm') && $this->can('photos.view'),
+                'photos_create'   => $company->planAllows('crm') && $this->can('photos.create'),
+                'photos_delete'   => $company->planAllows('crm') && $this->can('photos.delete'),
             ],
         ]);
     }

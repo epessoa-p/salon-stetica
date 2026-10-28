@@ -104,6 +104,8 @@ class PosController extends Controller
             'branches'         => Branch::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(['id', 'name']),
             'openSessions'     => $openSessions,
             'canCreateClient'  => $user->is_super_admin || $user->hasPermissionInCompany('clients.create', $company),
+            'sellsOnCredit'    => $company->planAllows('finance'),
+            'sellsCoupons'     => $company->planAllows('marketing'),
             'canQuote'         => $user->is_super_admin || $user->hasPermissionInCompany('quotes.create', $company),
             'fromQuote'        => $request->filled('quote') ? $this->fromQuote((int) $request->input('quote'), $companyId, $catalog) : null,
         ]);

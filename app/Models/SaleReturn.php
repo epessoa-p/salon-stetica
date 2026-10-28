@@ -15,13 +15,14 @@ class SaleReturn extends Model
 
     protected $fillable = [
         'company_id', 'sale_id', 'client_id', 'return_number', 'return_date', 'reason',
-        'refund_method', 'payment_method', 'cash_session_id', 'total', 'points_removed', 'points_returned',
+        'refund_method', 'payment_method', 'cash_session_id', 'total', 'applied_to_receivable', 'points_removed', 'points_returned',
         'notes', 'created_by',
     ];
 
     protected $casts = [
         'return_date'     => 'datetime',
         'total'           => 'decimal:2',
+        'applied_to_receivable' => 'decimal:2',
         'points_removed'  => 'integer',
         'points_returned' => 'integer',
     ];

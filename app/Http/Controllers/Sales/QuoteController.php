@@ -75,7 +75,7 @@ class QuoteController extends Controller
             'items' => ['required', 'array', 'min:1'],
         ]), ['items.required' => 'Agrega al menos una línea para cotizar.', 'items.min' => 'Agrega al menos una línea para cotizar.']);
         // Puntos, saldo y propina se deciden al cobrar.
-        $data = array_merge($data, ['redeem_points' => 0, 'credit_amount' => 0, 'tip' => 0]);
+        $data = array_merge($data, ['redeem_points' => 0, 'credit_amount' => 0, 'tip' => 0, 'on_credit' => false, 'coupon_code' => null]);
 
         $quote = $this->checkout->quote($data, $company);
         $errors = array_values(array_filter($quote['errors'], fn ($e) => !preg_match(self::IGNORED_ERRORS, $e)));

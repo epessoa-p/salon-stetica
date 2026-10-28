@@ -38,8 +38,12 @@
                             Paquetes y saldo
                             @if($usablePackages)<span class="badge bg-success-subtle text-success-emphasis ms-1">{{ $usablePackages }}</span>@endif
                             @if($creditBalance > 0)<span class="badge bg-primary-subtle text-primary-emphasis ms-1"><i class="bi bi-wallet2"></i></span>@endif
+                            @if($account && $account['debt'] > 0)<span class="badge {{ $account['overdue'] ? 'bg-danger' : 'bg-warning text-dark' }} ms-1">Debe</span>@endif
                         </button>
                     </li>
+                @endif
+                @if($showPhotos)
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-fotos" id="tab-fotos-btn" type="button">Fotos @if($photos->isNotEmpty())<span class="badge bg-light text-dark ms-1">{{ $photos->count() }}</span>@endif</button></li>
                 @endif
                 <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-obs" type="button">Observaciones</button></li>
             </ul>
@@ -194,6 +198,13 @@
                     </div>
                 @endif
 
+                {{-- Fotos antes/después --}}
+                @if($showPhotos)
+                    <div class="tab-pane fade" id="tab-fotos">
+                        @include('crm.clients._photos')
+                    </div>
+                @endif
+
                 {{-- Observaciones --}}
                 <div class="tab-pane fade" id="tab-obs">
                     @if($client->notes)
@@ -207,3 +218,12 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+    // Abre la pestaña de fotos al volver de subir o eliminar (#fotos).
+    if (location.hash === '#fotos' && document.getElementById('tab-fotos-btn')) {
+        bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-fotos-btn')).show();
+    }
+</script>
+@endpush

@@ -39,9 +39,11 @@ class Plan extends Model
         'products' => 'inventory', 'product-categories' => 'inventory', 'brands' => 'inventory', 'stock' => 'inventory',
         'suppliers' => 'purchasing', 'purchases' => 'purchasing', 'purchase-returns' => 'purchasing',
         'cash' => 'finance', 'cajas' => 'finance', 'incomes' => 'finance', 'expenses' => 'finance',
+        'receivables' => 'finance', 'payables' => 'finance',
         'commissions' => 'commissions', 'commission-rules' => 'commissions',
         'memberships' => 'loyalty', 'loyalty' => 'loyalty',
-        'marketing' => 'marketing',
+        'marketing' => 'marketing', 'coupons' => 'marketing', 'promotions' => 'marketing',
+        'reminders' => 'scheduling', 'photos' => 'crm',
         // 'company','users','roles','branches','cargos','personal','reports',
         // 'plans','subscriptions','payments' → administrativos = siempre disponibles.
     ];

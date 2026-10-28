@@ -17,7 +17,7 @@ class Sale extends Model
         'company_id', 'branch_id', 'client_id', 'personal_id', 'cash_session_id', 'sale_number',
         'client_name', 'client_phone', 'client_document', 'sale_date',
         'subtotal', 'tax', 'discount', 'membership_discount', 'package_discount', 'loyalty_points_redeemed', 'loyalty_discount',
-        'loyalty_points_earned', 'total', 'tip', 'credit_applied', 'returned_total', 'quote_id', 'tip_settlement_id', 'payment_method', 'status',
+        'loyalty_points_earned', 'total', 'tip', 'credit_applied', 'on_credit', 'returned_total', 'quote_id', 'coupon_id', 'coupon_discount', 'promotion_discount', 'tip_settlement_id', 'payment_method', 'status',
         'notes', 'created_by',
     ];
 
@@ -29,6 +29,9 @@ class Sale extends Model
         'membership_discount' => 'decimal:2',
         'package_discount' => 'decimal:2',
         'credit_applied' => 'decimal:2',
+        'on_credit' => 'boolean',
+        'coupon_discount' => 'decimal:2',
+        'promotion_discount' => 'decimal:2',
         'returned_total' => 'decimal:2',
         'loyalty_discount' => 'decimal:2',
         'loyalty_points_redeemed' => 'integer',
@@ -79,15 +82,35 @@ class Sale extends Model
         return $this->hasMany(SaleReturn::class);
     }
 
+    public function coupon(): BelongsTo
+    {
+        return $this->belongsTo(Coupon::class)->withTrashed();
+    }
+
     public function quote(): BelongsTo
     {
         return $this->belongsTo(Quote::class);
     }
 
-    /** Lo que entró en dinero: el total menos lo pagado con saldo a favor. */
+    /** Cuenta por cobrar de una venta a crédito. */
+    public function receivable(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Receivable::class);
+    }
+
+    /**
+     * Lo que entró en dinero por la venta (sin propina): el total menos lo
+     * pagado con saldo a favor y, si fue a crédito, menos lo que quedó
+     * pendiente más lo que ya se abonó.
+     */
     public function paidInMoney(): float
     {
-        return round((float) $this->total - (float) $this->credit_applied, 2);
+        $money = (float) $this->total - (float) $this->credit_applied;
+        if ($this->on_credit && ($r = $this->receivable)) {
+            $money -= (float) $r->amount - (float) $r->paid_amount;
+        }
+
+        return max(0, round($money, 2));
     }
 
     public function hasReturns(): bool

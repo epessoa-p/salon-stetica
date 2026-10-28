@@ -109,6 +109,11 @@
                                 <div class="form-text">Mientras está vigente se respetan sus precios al venderla.</div>
                             </div>
                             <div class="col-md-6">
+                                <label class="form-label small">Plazo de una venta a crédito (días)</label>
+                                <input type="number" min="1" max="365" name="receivable_default_days" class="form-control no-uppercase" value="{{ old('receivable_default_days', $setting->receivable_default_days) }}">
+                                <div class="form-text">Se propone en el punto de venta; se puede cambiar en cada venta.</div>
+                            </div>
+                            <div class="col-md-6">
                                 <label class="form-label small">Tolerancia de tardanza (min)</label>
                                 <input type="number" min="0" max="120" name="attendance_tolerance_minutes" class="form-control no-uppercase" value="{{ old('attendance_tolerance_minutes', $setting->attendance_tolerance_minutes) }}">
                                 <div class="form-text">Llegar dentro de este margen no cuenta como tarde.</div>

@@ -150,6 +150,55 @@ class AgendaController extends ApiController
         return response()->json(self::appointment($appointment->fresh(['client', 'service', 'specialist']), $own));
     }
 
+    /**
+     * Reprograma una cita (fecha, hora, duración y profesional). Mismas
+     * reglas que la web: choque = 422; fuera de horario = 422 con
+     * `errors.outside_schedule` y se reenvía con force_outside.
+     */
+    public function reschedule(Request $request, Appointment $appointment): JsonResponse
+    {
+        if ($appointment->company_id !== $this->company()->id) {
+            return $this->fail(404, 'not_found', 'Cita no encontrada.');
+        }
+
+        $own = $this->ownPersonal();
+        $isOwn = $own && (int) $appointment->personal_id === (int) $own->id;
+        if (!$isOwn && !$this->can('appointments.edit')) {
+            return $this->forbidden('Solo puedes reprogramar tus propias citas.');
+        }
+        if (!in_array($appointment->status, ['pendiente', 'confirmada'], true)) {
+            return $this->fail(422, 'not_reschedulable', 'Solo se reprograman citas pendientes o confirmadas.');
+        }
+
+        $data = $request->validate([
+            'starts_at'        => ['required', 'date'],
+            'duration_minutes' => ['nullable', 'integer', 'min:5', 'max:1440'],
+            'personal_id'      => ['nullable', 'integer'],
+            'force_outside'    => ['nullable', 'boolean'],
+        ]);
+
+        // Cambiar de profesional es reasignar la cita: requiere permiso de edición.
+        $personalId = $request->has('personal_id') ? $data['personal_id'] : $appointment->personal_id;
+        if ((int) $personalId !== (int) $appointment->personal_id && !$this->can('appointments.edit')) {
+            return $this->forbidden('No tienes permiso para asignar la cita a otro profesional.');
+        }
+
+        $currentMinutes = $appointment->ends_at ? (int) $appointment->starts_at->diffInMinutes($appointment->ends_at) : 30;
+        $prepared = $this->appointments->prepare([
+            'client_id'        => $appointment->client_id,
+            'service_id'       => $appointment->service_id,
+            'personal_id'      => $personalId,
+            'starts_at'        => $data['starts_at'],
+            'duration_minutes' => $data['duration_minutes'] ?? $currentMinutes,
+            'price'            => $appointment->price,
+            'status'           => $appointment->status,
+        ], $appointment->company_id, $request->boolean('force_outside'), $appointment);
+
+        $appointment->update($prepared);
+
+        return response()->json(self::appointment($appointment->fresh(['client', 'service', 'specialist']), $own));
+    }
+
     public static function appointment(Appointment $a, ?Personal $own = null): array
     {
         return [
