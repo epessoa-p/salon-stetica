@@ -6,8 +6,8 @@
     $activeCompanies = auth()->user()->activeCompanies()->get();
 
     // Colores base de la empresa activa (con fallback al tema por defecto).
-    $headerBg = $currentCompany?->primary_color ?: '#1e1e1e';
-    $navBg    = $currentCompany?->secondary_color ?: '#f8f8f8';
+    $headerBg = $currentCompany?->primary_color ?: \App\Models\Company::DEFAULT_PRIMARY_COLOR;
+    $navBg    = $currentCompany?->secondary_color ?: \App\Models\Company::DEFAULT_SECONDARY_COLOR;
 
     // Texto legible según luminancia del fondo.
     $contrastText = function (string $hex): string {
@@ -48,6 +48,58 @@
     $headerGradB = $shade($headerBg, -16);
     $navGradA    = $shade($navBg, 7);
     $navGradB    = $shade($navBg, -5);
+
+    // Acento del tema (botones, enlaces, foco): el color de la cabecera.
+    $rgb = function (string $hex): string {
+        $hex = ltrim($hex, '#');
+        if (strlen($hex) === 3) {
+            $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+        }
+        return strlen($hex) === 6
+            ? hexdec(substr($hex, 0, 2)).', '.hexdec(substr($hex, 2, 2)).', '.hexdec(substr($hex, 4, 2))
+            : '168, 85, 133';
+    };
+    // Con una cabecera clara los botones no se leerían: se usa el mismo tono
+    // (HSL) con la luminosidad y saturación de un botón legible.
+    $readable = function (string $hex) use ($contrastText): string {
+        if ($contrastText($hex) === '#ffffff') {
+            return $hex;
+        }
+        $hex = ltrim($hex, '#');
+        if (strlen($hex) === 3) {
+            $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+        }
+        if (strlen($hex) !== 6) {
+            return \App\Models\Company::DEFAULT_PRIMARY_COLOR;
+        }
+        [$r, $g, $b] = [hexdec(substr($hex, 0, 2)) / 255, hexdec(substr($hex, 2, 2)) / 255, hexdec(substr($hex, 4, 2)) / 255];
+        $max = max($r, $g, $b);
+        $min = min($r, $g, $b);
+        $d = $max - $min;
+        // Gris o casi gris: no hay tono que conservar.
+        if ($d < 0.04) {
+            return \App\Models\Company::DEFAULT_PRIMARY_COLOR;
+        }
+        $h = match (true) {
+            $max === $r => fmod(($g - $b) / $d + 6, 6),
+            $max === $g => ($b - $r) / $d + 2,
+            default => ($r - $g) / $d + 4,
+        } * 60;
+        [$s, $l] = [0.38, 0.47];
+        $c = (1 - abs(2 * $l - 1)) * $s;
+        $x = $c * (1 - abs(fmod($h / 60, 2) - 1));
+        $m = $l - $c / 2;
+        [$r, $g, $b] = match (intdiv((int) $h, 60)) {
+            0 => [$c, $x, 0], 1 => [$x, $c, 0], 2 => [0, $c, $x],
+            3 => [0, $x, $c], 4 => [$x, 0, $c], default => [$c, 0, $x],
+        };
+        return sprintf('#%02x%02x%02x', round(($r + $m) * 255), round(($g + $m) * 255), round(($b + $m) * 255));
+    };
+    $accent = $readable($headerBg);
+    $accentRgb   = $rgb($accent);
+    $accentDark  = $shade($accent, -14);
+    $accentSoft  = $shade($accent, 90);
+    $accentSoft2 = $shade($accent, 70);
 @endphp
 
 <style>
@@ -61,6 +113,25 @@
         /* Acento: el color de la cabecera se reutiliza en el menú activo */
         --company-accent: {{ $headerBg }};
         --company-accent-text: {{ $headerText }};
+
+        /* Tema Glamora (el mismo de la app): Bootstrap toma el color de la empresa */
+        --accent-rgb: {{ $accentRgb }};
+        --accent-dark: {{ $accentDark }};
+        --accent-soft: {{ $accentSoft }};
+        --accent-soft-2: {{ $accentSoft2 }};
+        --app-bg: #faf6f8;
+        --app-border: #eee2e9;
+        --accent: {{ $accent }};
+        --bs-primary: {{ $accent }};
+        --bs-primary-rgb: {{ $accentRgb }};
+        --bs-primary-text-emphasis: {{ $accentDark }};
+        --bs-primary-bg-subtle: {{ $accentSoft }};
+        --bs-primary-border-subtle: {{ $accentSoft2 }};
+        --bs-link-color: {{ $accent }};
+        --bs-link-color-rgb: {{ $accentRgb }};
+        --bs-link-hover-color: {{ $accentDark }};
+        --bs-link-hover-color-rgb: {{ $rgb($accentDark) }};
+        --bs-focus-ring-color: rgba({{ $accentRgb }}, .25);
     }
 </style>
 
@@ -160,21 +231,50 @@
                             @endif
                         </form>
                     @endif
+                    {{-- Menú del perfil: datos del usuario, accesos propios y cerrar sesión --}}
+                    @php
+                        $initials = collect(preg_split('/\s+/', trim($authUser->name)))->filter()->take(2)
+                            ->map(fn ($w) => mb_strtoupper(mb_substr($w, 0, 1)))->implode('') ?: '?';
+                        $canMyCompany = $currentCompany && ($authUser->is_super_admin || $authUser->hasPermissionInCompany('my-company.view', $currentCompany));
+                    @endphp
                     <div class="dropdown">
-                        <button class="btn btn-icon" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <button class="btn btn-icon" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Mi perfil">
                             <i class="bi bi-person-circle"></i>
                         </button>
-                        <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-                            <li><span class="dropdown-item-text text-muted">{{ auth()->user()->name }}</span></li>
-                            <li><span class="dropdown-item-text text-muted small">{{ auth()->user()->email }}</span></li>
+                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 profile-menu">
+                            <li class="profile-menu-head">
+                                <span class="profile-avatar">{{ $initials }}</span>
+                                <div class="min-w-0">
+                                    <div class="fw-semibold text-truncate">{{ $authUser->name }}</div>
+                                    <div class="small text-secondary text-truncate">{{ $authUser->email }}</div>
+                                    <div class="small text-secondary text-truncate">
+                                        {{ $userCargo }}@if($currentCompany) · {{ $currentCompany->name }}@endif
+                                    </div>
+                                </div>
+                            </li>
+                            @if($ownPersonal || $canMyCompany)
+                                <li><hr class="dropdown-divider"></li>
+                            @endif
+                            @if($ownPersonal)
+                                <li><a class="dropdown-item" href="{{ route('attendance.mine') }}"><i class="bi bi-clock-history me-2"></i>Mi asistencia</a></li>
+                                @if($currentCompany->planAllows('commissions'))
+                                    <li><a class="dropdown-item" href="{{ route('commissions.mine') }}"><i class="bi bi-wallet2 me-2"></i>Mis comisiones</a></li>
+                                @endif
+                            @endif
+                            @if($canMyCompany)
+                                <li><a class="dropdown-item" href="{{ route('my-company.edit') }}"><i class="bi bi-building me-2"></i>Mi empresa</a></li>
+                            @endif
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form action="{{ route('logout') }}" method="POST" class="m-0">
+                                    @csrf
+                                    <button class="dropdown-item text-danger" type="submit">
+                                        <i class="bi bi-box-arrow-right me-2"></i>Cerrar sesión
+                                    </button>
+                                </form>
+                            </li>
                         </ul>
                     </div>
-                    <form action="{{ route('logout') }}" method="POST" class="m-0">
-                        @csrf
-                        <button class="btn btn-logout" type="submit">
-                            <i class="bi bi-box-arrow-right"></i> Cerrar sesion
-                        </button>
-                    </form>
                 </div>
             </div>
         </nav>
@@ -236,7 +336,182 @@
 <style>
     .app-shell {
         min-height: 100vh;
-        background: #f2f2f2;
+        background: var(--app-bg);
+    }
+
+    /* ── Tema Glamora: tarjetas, botones y formularios como en la app ── */
+    .app-main .card {
+        border: 1px solid var(--app-border);
+        border-radius: 14px;
+        box-shadow: 0 1px 3px rgba(var(--accent-rgb), .05);
+    }
+
+    .app-main .card > .card-header:first-child {
+        border-radius: 13px 13px 0 0;
+    }
+
+    /* Las cabeceras con bg-* (bg-white, bg-light…) quedan planas, sin degradado */
+    .app-main .card > .card-header[class*="bg-"] {
+        background-image: none;
+        color: var(--bs-body-color);
+    }
+
+    .app-main .card > .card-header:not([class*="bg-"]) {
+        background: var(--company-header-grad);
+        color: var(--company-header-text);
+    }
+
+    .app-main .card > .card-footer:last-child {
+        border-radius: 0 0 13px 13px;
+    }
+
+    .app-main .card > .table-responsive:last-child,
+    .app-main .card > .list-group:last-child {
+        border-radius: 0 0 13px 13px;
+    }
+
+    .btn {
+        border-radius: 10px;
+    }
+
+    .btn-sm {
+        border-radius: 8px;
+    }
+
+    .btn-primary {
+        --bs-btn-color: #ffffff;
+        --bs-btn-bg: var(--accent);
+        --bs-btn-border-color: var(--accent);
+        --bs-btn-hover-color: #ffffff;
+        --bs-btn-hover-bg: var(--accent-dark);
+        --bs-btn-hover-border-color: var(--accent-dark);
+        --bs-btn-active-color: #ffffff;
+        --bs-btn-active-bg: var(--accent-dark);
+        --bs-btn-active-border-color: var(--accent-dark);
+        --bs-btn-disabled-color: #ffffff;
+        --bs-btn-disabled-bg: var(--accent);
+        --bs-btn-disabled-border-color: var(--accent);
+        --bs-btn-focus-shadow-rgb: var(--accent-rgb);
+        background: var(--bs-btn-bg);
+        border: 1px solid var(--bs-btn-border-color);
+    }
+
+    .btn-primary:hover {
+        transform: none;
+        box-shadow: 0 4px 12px rgba(var(--accent-rgb), .3);
+    }
+
+    .btn-outline-primary {
+        --bs-btn-color: var(--accent);
+        --bs-btn-border-color: var(--accent);
+        --bs-btn-hover-color: #ffffff;
+        --bs-btn-hover-bg: var(--accent);
+        --bs-btn-hover-border-color: var(--accent);
+        --bs-btn-active-color: #ffffff;
+        --bs-btn-active-bg: var(--accent-dark);
+        --bs-btn-active-border-color: var(--accent-dark);
+        --bs-btn-disabled-color: var(--accent);
+        --bs-btn-disabled-border-color: var(--accent);
+        --bs-btn-focus-shadow-rgb: var(--accent-rgb);
+    }
+
+    .btn-check:checked + .btn-outline-primary {
+        color: #ffffff;
+        background: var(--accent);
+        border-color: var(--accent);
+    }
+
+    .app-main .form-control,
+    .app-main .form-select {
+        border-radius: 10px;
+        border-color: #e4d6de;
+    }
+
+    .app-main .input-group > .form-control,
+    .app-main .input-group > .form-select,
+    .app-main .input-group > .btn,
+    .app-main .input-group > .input-group-text {
+        border-radius: 0;
+    }
+
+    .app-main .input-group > :first-child { border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
+    .app-main .input-group > :last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
+
+    .form-control:focus,
+    .form-select:focus {
+        border-color: var(--accent-soft-2);
+        box-shadow: 0 0 0 .2rem rgba(var(--accent-rgb), .18);
+    }
+
+    .form-check-input:checked {
+        background-color: var(--accent);
+        border-color: var(--accent);
+    }
+
+    .form-check-input:focus {
+        border-color: var(--accent-soft-2);
+        box-shadow: 0 0 0 .2rem rgba(var(--accent-rgb), .18);
+    }
+
+    .app-main .table thead,
+    .app-main .table thead th {
+        background-color: var(--accent-soft);
+        border-bottom-color: var(--app-border);
+        color: #5b4a55;
+    }
+
+    .app-main .table tbody tr:hover {
+        background-color: #fdf9fb;
+    }
+
+    .pagination {
+        --bs-pagination-color: var(--accent);
+        --bs-pagination-hover-color: var(--accent-dark);
+        --bs-pagination-focus-color: var(--accent-dark);
+        --bs-pagination-focus-box-shadow: 0 0 0 .2rem rgba(var(--accent-rgb), .18);
+        --bs-pagination-active-bg: var(--accent);
+        --bs-pagination-active-border-color: var(--accent);
+        --bs-pagination-active-color: #ffffff;
+    }
+
+    .nav-pills {
+        --bs-nav-pills-link-active-bg: var(--accent);
+        --bs-nav-pills-link-active-color: #ffffff;
+        --bs-nav-pills-border-radius: 10px;
+    }
+
+    .nav-link {
+        --bs-nav-link-color: var(--accent);
+        --bs-nav-link-hover-color: var(--accent-dark);
+    }
+
+    .nav-tabs .nav-link.active {
+        color: var(--accent-dark);
+        font-weight: 600;
+    }
+
+    .dropdown-menu {
+        --bs-dropdown-link-active-bg: var(--accent);
+        --bs-dropdown-link-active-color: #ffffff;
+        border-radius: 12px;
+    }
+
+    .list-group {
+        --bs-list-group-active-bg: var(--accent);
+        --bs-list-group-active-border-color: var(--accent);
+        --bs-list-group-active-color: #ffffff;
+    }
+
+    .progress {
+        --bs-progress-bar-bg: var(--accent);
+    }
+
+    .modal-content {
+        border-radius: 16px;
+    }
+
+    .app-main .alert {
+        border-radius: 12px;
     }
 
     .app-sidebar {
@@ -553,9 +828,23 @@
         font-size: 0.8rem;
     }
 
-    .app-topbar .text-muted {
+    /* Solo los textos sobre el encabezado: los menús desplegables tienen fondo blanco. */
+    .app-topbar .text-muted:not(.dropdown-menu *) {
         color: color-mix(in srgb, var(--company-header-text) 70%, transparent) !important;
     }
+
+    .profile-menu { min-width: 260px; padding-top: 0; overflow: hidden; }
+    .profile-menu-head {
+        display: flex; align-items: center; gap: .65rem;
+        padding: .8rem 1rem; background: #f8f9fb; color: #212529;
+    }
+    .profile-menu .min-w-0 { min-width: 0; }
+    .profile-avatar {
+        flex: 0 0 38px; width: 38px; height: 38px; border-radius: 50%;
+        display: grid; place-items: center; font-weight: 700; font-size: .85rem;
+        background: var(--company-header-grad); color: var(--company-header-text);
+    }
+    .profile-menu .dropdown-item { font-size: .88rem; }
 
     .app-topbar .btn-outline-light {
         color: var(--company-header-text);

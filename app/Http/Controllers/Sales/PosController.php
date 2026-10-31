@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\CashSession;
 use App\Models\Client;
 use App\Models\Combo;
+use App\Models\Company;
 use App\Models\CompanySetting;
 use App\Models\MembershipPlan;
 use App\Models\PaymentMethod;
@@ -19,6 +20,7 @@ use App\Models\ServicePackage;
 use App\Services\CheckoutService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 /**
  * Pantalla del punto de venta y sus consultas en vivo. El cobro en sí lo
@@ -44,6 +46,41 @@ class PosController extends Controller
         $sellsMemberships = $company->planAllows('loyalty');
 
         $categories = ServiceCategory::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(['id', 'name']);
+        $catalog = $this->catalog($company);
+
+        $openSessions = CashSession::with('register')
+            ->where('status', 'open')
+            ->whereHas('register', fn ($q) => $q->where('company_id', $companyId))
+            ->get();
+
+        return view('sales.pos', [
+            'noCompany'        => false,
+            'setting'          => $setting,
+            'catalog'          => $catalog,
+            'categories'       => $categories,
+            'sellsProducts'    => $sellsProducts,
+            'sellsMemberships' => $sellsMemberships,
+            'specialists'      => Personal::where('company_id', $companyId)->where('active', true)->orderBy('full_name')->get(['id', 'full_name']),
+            'defaultPrincipal' => Personal::where('company_id', $companyId)->where('user_id', $user->id)->value('id'),
+            'paymentMethods'   => $this->paymentMethods($companyId),
+            'branches'         => Branch::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(['id', 'name']),
+            'openSessions'     => $openSessions,
+            'canCreateClient'  => $user->is_super_admin || $user->hasPermissionInCompany('clients.create', $company),
+            'sellsOnCredit'    => $company->planAllows('finance'),
+            'sellsCoupons'     => $company->planAllows('marketing'),
+            'canQuote'         => $user->is_super_admin || $user->hasPermissionInCompany('quotes.create', $company),
+            'fromQuote'        => $request->filled('quote') ? $this->fromQuote((int) $request->input('quote'), $companyId, $catalog) : null,
+        ]);
+    }
+
+    /**
+     * Lo que se puede vender según el plan: servicios, productos (inventario),
+     * membresías (fidelización), combos y paquetes. Lo usa también la app.
+     */
+    public function catalog(Company $company): Collection
+    {
+        $companyId = $company->id;
+        $sellsProducts = $company->planAllows('inventory');
 
         $catalog = Service::where('company_id', $companyId)->where('active', true)->orderBy('name')->get()
             ->map(fn ($s) => [
@@ -68,7 +105,7 @@ class PosController extends Controller
             );
         }
 
-        if ($sellsMemberships) {
+        if ($company->planAllows('loyalty')) {
             $catalog = $catalog->concat(
                 MembershipPlan::with('sessions.service')->where('company_id', $companyId)->where('active', true)
                     ->orderBy('sort_order')->orderBy('name')->get()
@@ -84,31 +121,7 @@ class PosController extends Controller
             );
         }
 
-        $catalog = $catalog->concat($this->combos($companyId, $sellsProducts))->concat($this->packages($companyId));
-
-        $openSessions = CashSession::with('register')
-            ->where('status', 'open')
-            ->whereHas('register', fn ($q) => $q->where('company_id', $companyId))
-            ->get();
-
-        return view('sales.pos', [
-            'noCompany'        => false,
-            'setting'          => $setting,
-            'catalog'          => $catalog->values(),
-            'categories'       => $categories,
-            'sellsProducts'    => $sellsProducts,
-            'sellsMemberships' => $sellsMemberships,
-            'specialists'      => Personal::where('company_id', $companyId)->where('active', true)->orderBy('full_name')->get(['id', 'full_name']),
-            'defaultPrincipal' => Personal::where('company_id', $companyId)->where('user_id', $user->id)->value('id'),
-            'paymentMethods'   => $this->paymentMethods($companyId),
-            'branches'         => Branch::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(['id', 'name']),
-            'openSessions'     => $openSessions,
-            'canCreateClient'  => $user->is_super_admin || $user->hasPermissionInCompany('clients.create', $company),
-            'sellsOnCredit'    => $company->planAllows('finance'),
-            'sellsCoupons'     => $company->planAllows('marketing'),
-            'canQuote'         => $user->is_super_admin || $user->hasPermissionInCompany('quotes.create', $company),
-            'fromQuote'        => $request->filled('quote') ? $this->fromQuote((int) $request->input('quote'), $companyId, $catalog) : null,
-        ]);
+        return $catalog->concat($this->combos($companyId, $sellsProducts))->concat($this->packages($companyId))->values();
     }
 
     /** Combos a la venta. Con productos, se vende hasta donde alcance el stock. */
@@ -274,7 +287,7 @@ class PosController extends Controller
     }
 
     /** Métodos de pago activos con su icono y si suman al efectivo de caja. */
-    protected function paymentMethods(int $companyId): array
+    public function paymentMethods(int $companyId): array
     {
         $methods = PaymentMethod::where('company_id', $companyId)->where('active', true)
             ->orderBy('sort_order')->orderBy('name')

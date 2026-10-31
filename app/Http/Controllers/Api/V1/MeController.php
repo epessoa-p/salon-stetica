@@ -43,6 +43,12 @@ class MeController extends ApiController
                 'photos_view'     => $company->planAllows('crm') && $this->can('photos.view'),
                 'photos_create'   => $company->planAllows('crm') && $this->can('photos.create'),
                 'photos_delete'   => $company->planAllows('crm') && $this->can('photos.delete'),
+                'sales_create'    => $company->planAllows('sales') && $this->can('sales.create'),
+                'sales_view'      => $company->planAllows('sales') && $this->can('sales.view'),
+                'cash_view'       => $company->planAllows('finance') && $this->can('cash.view'),
+                'cash_open'       => $company->planAllows('finance') && $this->can('cash.open'),
+                'cash_move'       => $company->planAllows('finance') && $this->can('cash.move'),
+                'cash_close'      => $company->planAllows('finance') && $this->can('cash.close'),
             ],
         ]);
     }

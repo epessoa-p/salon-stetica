@@ -113,8 +113,8 @@
                         <div class="card-header bg-white border-0 pt-3"><h6 class="fw-bold mb-0"><i class="bi bi-palette text-warning"></i> Colores base</h6></div>
                         <div class="card-body pt-2">
                             @include('system.companies.partials.colors', [
-                                'primaryColor'   => old('primary_color', $company->primary_color ?? '#1e1e1e'),
-                                'secondaryColor' => old('secondary_color', $company->secondary_color ?? '#f8f8f8'),
+                                'primaryColor'   => old('primary_color', $company->primary_color ?? \App\Models\Company::DEFAULT_PRIMARY_COLOR),
+                                'secondaryColor' => old('secondary_color', $company->secondary_color ?? \App\Models\Company::DEFAULT_SECONDARY_COLOR),
                             ])
                             <small class="text-muted"><i class="bi bi-info-circle"></i> Los cambios de color se ven al guardar y recargar.</small>
                         </div>

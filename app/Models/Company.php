@@ -12,6 +12,10 @@ class Company extends Model
 {
     use HasFactory, SoftDeletes;
 
+    /** Colores por defecto (paleta de Glamora): cabecera malva y menú rosa suave. */
+    public const DEFAULT_PRIMARY_COLOR = '#A85585';
+    public const DEFAULT_SECONDARY_COLOR = '#FBEFF5';
+
     protected $fillable = [
         'name', 'ruc', 'address', 'phone', 'email', 'logo', 'description', 'active',
         'primary_color', 'secondary_color',

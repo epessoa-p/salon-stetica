@@ -3,11 +3,13 @@
 use App\Http\Controllers\Api\V1\AgendaController;
 use App\Http\Controllers\Api\V1\AttendanceController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\CashController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\CommissionController;
 use App\Http\Controllers\Api\V1\ManagementController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\MessagingController;
+use App\Http\Controllers\Api\V1\SalesController;
 use App\Http\Controllers\Api\V1\ScheduleController;
 use Illuminate\Support\Facades\Route;
 
@@ -60,6 +62,21 @@ Route::prefix('v1')->name('api.')->group(function () {
             Route::get('receivables', [ManagementController::class, 'receivables'])->name('receivables');
             Route::get('receivables/{client}', [ManagementController::class, 'receivableClient'])->name('receivables.client');
             Route::post('receivables/{client}/collect', [ManagementController::class, 'collect'])->name('receivables.collect');
+
+            // Cobro (punto de venta) y mis ventas
+            Route::get('pos/options', [SalesController::class, 'options'])->name('pos.options');
+            Route::get('pos/clients', [SalesController::class, 'clients'])->name('pos.clients');
+            Route::post('pos/quote', [SalesController::class, 'quote'])->name('pos.quote');
+            Route::get('sales', [SalesController::class, 'index'])->name('sales');
+            Route::post('sales', [SalesController::class, 'store'])->name('sales.store');
+            Route::get('sales/{sale}', [SalesController::class, 'show'])->name('sales.show');
+
+            // Caja: abrir, ingreso/gasto rápido y cierre con arqueo
+            Route::get('cash', [CashController::class, 'index'])->name('cash');
+            Route::post('cash/open', [CashController::class, 'open'])->name('cash.open');
+            Route::get('cash/{session}', [CashController::class, 'show'])->name('cash.show');
+            Route::post('cash/{session}/movements', [CashController::class, 'movement'])->name('cash.movement');
+            Route::post('cash/{session}/close', [CashController::class, 'close'])->name('cash.close');
         });
     });
 });

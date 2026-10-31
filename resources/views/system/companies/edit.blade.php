@@ -64,8 +64,8 @@
             </div>
 
             @include('system.companies.partials.colors', [
-                'primaryColor'   => old('primary_color', $company->primary_color ?? '#1e1e1e'),
-                'secondaryColor' => old('secondary_color', $company->secondary_color ?? '#f8f8f8'),
+                'primaryColor'   => old('primary_color', $company->primary_color ?? \App\Models\Company::DEFAULT_PRIMARY_COLOR),
+                'secondaryColor' => old('secondary_color', $company->secondary_color ?? \App\Models\Company::DEFAULT_SECONDARY_COLOR),
             ])
 
             <div class="form-group">
