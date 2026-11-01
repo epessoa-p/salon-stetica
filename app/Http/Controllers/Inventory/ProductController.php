@@ -56,7 +56,15 @@ class ProductController extends Controller
         $validated['sku'] = $validated['sku'] ?: $this->nextSku($companyId);
         $validated['active'] = $request->boolean('active', true);
 
-        Product::create($validated);
+        // El stock inicial entra al almacén principal, con su movimiento en el kardex.
+        $initial = (float) ($validated['current_stock'] ?? 0);
+        $validated['current_stock'] = 0;
+        \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $initial, $companyId) {
+            $product = Product::create($validated);
+            if ($initial > 0) {
+                app(\App\Services\StockService::class)->move($product->id, $initial, 'entrada', $companyId, 'STOCK INICIAL', 'Stock inicial del producto');
+            }
+        });
 
         return redirect()->route('products.index')->with('success', 'Producto creado exitosamente.');
     }

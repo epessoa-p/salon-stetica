@@ -863,6 +863,8 @@
         $('pos-cash-session').addEventListener('change', (e) => {
             if (e.target.id === 'pos-session') { state.cashSession = e.target.value; renderCheckout(); }
         });
+        // Arranca con la sucursal que la vista marcó (la del usuario).
+        if ($('pos-branch') && !state.branch) state.branch = $('pos-branch').value;
         $('pos-branch')?.addEventListener('change', (e) => { state.branch = e.target.value; });
         $('pos-notes').addEventListener('input', (e) => { state.notes = e.target.value; });
 

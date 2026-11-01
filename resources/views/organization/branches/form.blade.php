@@ -24,16 +24,14 @@
                 <div class="col-md-6"><label class="form-label">Nombre</label><input type="text" name="name" class="form-control" value="{{ old('name', $branch?->name) }}" required></div>
                 <div class="col-md-6"><label class="form-label">Código</label><input type="text" name="code" class="form-control" value="{{ old('code', $branch?->code) }}"></div>
                 <div class="col-md-6">
-                    <label class="form-label">Almacén principal <span class="text-danger">*</span></label>
-                    <select name="warehouse_id" class="form-select" required>
-                        <option value="">Seleccionar almacén</option>
+                    <label class="form-label">Almacén principal</label>
+                    <select name="warehouse_id" class="form-select">
+                        <option value="">Crear un almacén nuevo para esta sucursal</option>
                         @foreach($warehouses as $warehouse)
                             <option value="{{ $warehouse->id }}" {{ (string) old('warehouse_id', $branch?->warehouse_id) === (string) $warehouse->id ? 'selected' : '' }}>{{ $warehouse->name }} ({{ $warehouse->code }})</option>
                         @endforeach
                     </select>
-                    @if($warehouses->isEmpty())
-                        <small class="text-danger">No hay almacenes disponibles para esta empresa. Crea primero un almacén.</small>
-                    @endif
+                    <small class="text-muted">De aquí salen los productos que vende la sucursal.</small>
                 </div>
                 <div class="col-md-6"><label class="form-label">Teléfono</label><input type="text" name="phone" class="form-control" value="{{ old('phone', $branch?->phone) }}"></div>
                 <div class="col-md-6"><label class="form-label">Correo</label><input type="email" name="email" class="form-control" value="{{ old('email', $branch?->email) }}"></div>

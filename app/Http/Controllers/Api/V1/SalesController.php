@@ -41,7 +41,8 @@ class SalesController extends ApiController
 
         return response()->json([
             'currency'          => $setting->currency_symbol,
-            'catalog'           => $pos->catalog($company),
+            // Stock del almacén de la sucursal del usuario.
+            'catalog'           => $pos->catalog($company, app(\App\Services\StockService::class)->warehouseFor($company->id, app(\App\Services\BranchResolver::class)->defaultFor($company->id, auth()->id()))),
             'categories'        => ServiceCategory::where('company_id', $company->id)->where('active', true)->orderBy('name')->get(['id', 'name']),
             'specialists'       => Personal::where('company_id', $company->id)->where('active', true)->orderBy('full_name')->get(['id', 'full_name'])
                 ->map(fn ($p) => ['id' => $p->id, 'name' => $p->full_name])->values(),

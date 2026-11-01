@@ -18,6 +18,15 @@
     @if($noCompany)
         <div class="alert alert-info d-flex align-items-center gap-2"><i class="bi bi-info-circle-fill"></i> El inventario se gestiona dentro de una empresa.</div>
     @else
+        @if($warehouses->count() > 1)
+            <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+                <span class="text-muted small">Almacén:</span>
+                <a href="{{ route('stock.movements') }}" class="btn btn-sm {{ !$warehouseId ? 'btn-primary' : 'btn-outline-secondary' }}">Todos</a>
+                @foreach($warehouses as $w)
+                    <a href="{{ route('stock.movements', ['warehouse' => $w->id]) }}" class="btn btn-sm {{ $warehouseId === $w->id ? 'btn-primary' : 'btn-outline-secondary' }}">{{ $w->label() }}</a>
+                @endforeach
+            </div>
+        @endif
         <div class="card border-0 shadow-sm">
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -26,6 +35,7 @@
                             <tr>
                                 <th class="ps-3">Fecha</th>
                                 <th>Producto</th>
+                                <th>Almacén</th>
                                 <th class="text-center">Tipo</th>
                                 <th class="text-end">Cantidad</th>
                                 <th class="pe-3">Notas</th>
@@ -39,12 +49,13 @@
                                 <tr>
                                     <td class="ps-3">{{ optional($m->movement_date)->format('d/m/Y H:i') }}</td>
                                     <td>{{ $m->product?->name ?? '—' }}</td>
+                                    <td class="small">{{ $m->warehouse?->name ?? '—' }}</td>
                                     <td class="text-center"><span class="badge {{ $badge }}">{{ \App\Models\InventoryMovement::TYPES[$m->type] ?? $m->type }}</span></td>
                                     <td class="text-end fw-semibold">{{ rtrim(rtrim(number_format($m->quantity, 2), '0'), '.') }}</td>
-                                    <td class="pe-3 text-muted">{{ $m->notes ?: '—' }}</td>
+                                    <td class="pe-3 text-muted">{{ $m->notes ?: '—' }}@if($m->reference && $m->reference !== 'MANUAL')<div class="small">{{ $m->reference }}</div>@endif</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="5" class="text-center py-5 text-muted">Sin movimientos registrados.</td></tr>
+                                <tr><td colspan="6" class="text-center py-5 text-muted">Sin movimientos registrados.</td></tr>
                             @endforelse
                         </tbody>
                     </table>

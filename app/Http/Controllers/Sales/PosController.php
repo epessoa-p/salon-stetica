@@ -46,7 +46,8 @@ class PosController extends Controller
         $sellsMemberships = $company->planAllows('loyalty');
 
         $categories = ServiceCategory::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(['id', 'name']);
-        $catalog = $this->catalog($company);
+        $defaultBranch = app(\App\Services\BranchResolver::class)->defaultFor($companyId, $user->id);
+        $catalog = $this->catalog($company, app(\App\Services\StockService::class)->warehouseFor($companyId, $defaultBranch));
 
         $openSessions = CashSession::with('register')
             ->where('status', 'open')
@@ -64,6 +65,7 @@ class PosController extends Controller
             'defaultPrincipal' => Personal::where('company_id', $companyId)->where('user_id', $user->id)->value('id'),
             'paymentMethods'   => $this->paymentMethods($companyId),
             'branches'         => Branch::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(['id', 'name']),
+            'defaultBranch'    => $defaultBranch,
             'openSessions'     => $openSessions,
             'canCreateClient'  => $user->is_super_admin || $user->hasPermissionInCompany('clients.create', $company),
             'sellsOnCredit'    => $company->planAllows('finance'),
@@ -76,11 +78,14 @@ class PosController extends Controller
     /**
      * Lo que se puede vender según el plan: servicios, productos (inventario),
      * membresías (fidelización), combos y paquetes. Lo usa también la app.
+     * Con $warehouseId el stock es el de ese almacén (si no, el total).
      */
-    public function catalog(Company $company): Collection
+    public function catalog(Company $company, ?int $warehouseId = null): Collection
     {
         $companyId = $company->id;
         $sellsProducts = $company->planAllows('inventory');
+        $products = $sellsProducts ? Product::where('company_id', $companyId)->where('active', true)->orderBy('name')->get() : collect();
+        $stock = app(\App\Services\StockService::class)->available($products->pluck('id')->all(), $companyId, $warehouseId);
 
         $catalog = Service::where('company_id', $companyId)->where('active', true)->orderBy('name')->get()
             ->map(fn ($s) => [
@@ -94,13 +99,13 @@ class PosController extends Controller
 
         if ($sellsProducts) {
             $catalog = $catalog->concat(
-                Product::where('company_id', $companyId)->where('active', true)->orderBy('name')->get()
+                $products
                     ->map(fn ($p) => [
                         'kind'  => 'product',
                         'id'    => $p->id,
                         'name'  => $p->name,
                         'price' => (float) $p->price,
-                        'stock' => (float) $p->current_stock,
+                        'stock' => (float) ($stock[$p->id] ?? 0),
                     ])
             );
         }
@@ -121,17 +126,20 @@ class PosController extends Controller
             );
         }
 
-        return $catalog->concat($this->combos($companyId, $sellsProducts))->concat($this->packages($companyId))->values();
+        return $catalog->concat($this->combos($companyId, $sellsProducts, $warehouseId))->concat($this->packages($companyId))->values();
     }
 
     /** Combos a la venta. Con productos, se vende hasta donde alcance el stock. */
-    protected function combos(int $companyId, bool $sellsProducts)
+    protected function combos(int $companyId, bool $sellsProducts, ?int $warehouseId = null)
     {
+        $stock = app(\App\Services\StockService::class);
+
         return Combo::with(['items.service', 'items.product'])->where('company_id', $companyId)->where('active', true)
             ->orderBy('sort_order')->orderBy('name')->get()
             ->filter(fn ($c) => $c->items->isNotEmpty() && ($sellsProducts || !$c->hasProducts()))
-            ->map(function ($c) {
+            ->map(function ($c) use ($stock, $companyId, $warehouseId) {
                 $products = $c->items->whereNotNull('product_id');
+                $have = $stock->available($products->pluck('product_id')->all(), $companyId, $warehouseId);
 
                 return [
                     'kind'   => 'combo',
@@ -142,7 +150,7 @@ class PosController extends Controller
                     'detail' => $c->summary(),
                     // Cuántos combos alcanza el stock (null = sin productos, sin límite).
                     'stock'  => $products->isEmpty() ? null
-                        : (float) $products->map(fn ($i) => floor((float) ($i->product?->current_stock ?? 0) / max(0.01, (float) $i->quantity)))->min(),
+                        : (float) $products->map(fn ($i) => floor(($have[$i->product_id] ?? 0) / max(0.01, (float) $i->quantity)))->min(),
                 ];
             })->values();
     }

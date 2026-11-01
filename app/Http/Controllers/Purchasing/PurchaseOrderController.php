@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Purchasing;
 
 use App\Http\Controllers\Controller;
 use App\Models\InventoryMovement;
+use App\Models\Warehouse;
+use App\Services\BranchResolver;
+use App\Services\StockService;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
@@ -133,46 +136,40 @@ class PurchaseOrderController extends Controller
         $this->authorizeOrder($purchaseOrder);
         $purchaseOrder->load(['provider', 'items.product', 'payable.payments']);
 
-        return view('purchasing.orders.show', ['order' => $purchaseOrder]);
+        return view('purchasing.orders.show', [
+            'order'            => $purchaseOrder,
+            'warehouses'       => Warehouse::with('branches:id,warehouse_id,name')->where('company_id', $purchaseOrder->company_id)->where('active', true)->orderBy('id')->get(),
+            'defaultWarehouse' => app(StockService::class)->warehouseFor($purchaseOrder->company_id, app(BranchResolver::class)->defaultFor($purchaseOrder->company_id, auth()->id())),
+        ]);
     }
 
     /** Recibe la orden: suma el stock de cada producto y registra movimientos. */
-    public function receive(PurchaseOrder $purchaseOrder)
+    public function receive(Request $request, PurchaseOrder $purchaseOrder)
     {
         $this->authorizeOrder($purchaseOrder);
+        $stock = app(StockService::class);
+        $warehouseId = $request->integer('warehouse_id') ?: null;
+        if ($warehouseId && !Warehouse::where('company_id', $purchaseOrder->company_id)->whereKey($warehouseId)->exists()) {
+            return back()->withErrors(['error' => 'El almacén elegido no es de la empresa.']);
+        }
+        $warehouseId ??= $stock->warehouseFor($purchaseOrder->company_id, app(BranchResolver::class)->defaultFor($purchaseOrder->company_id, auth()->id()));
 
         if ($purchaseOrder->status !== 'pendiente') {
             return back()->withErrors(['error' => 'Solo se pueden recibir órdenes pendientes.']);
         }
 
-        DB::transaction(function () use ($purchaseOrder) {
+        DB::transaction(function () use ($purchaseOrder, $stock, $warehouseId) {
             foreach ($purchaseOrder->items()->with('product')->get() as $item) {
                 $product = $item->product;
                 if (!$product) {
                     continue;
                 }
 
-                $product->update([
-                    'current_stock' => (float) $product->current_stock + (float) $item->quantity,
-                    'cost' => $item->unit_cost, // actualiza costo al último de compra
-                ]);
-
-                InventoryMovement::create([
-                    'company_id'    => $purchaseOrder->company_id,
-                    'warehouse_id'  => null,
-                    'branch_id'     => null,
-                    'product_id'    => $product->id,
-                    'user_id'       => auth()->id(),
-                    'type'          => 'entrada',
-                    'quantity'      => $item->quantity,
-                    'unit_cost'     => $item->unit_cost,
-                    'reference'     => $purchaseOrder->entry_number,
-                    'notes'         => 'Recepción OC ' . $purchaseOrder->entry_number,
-                    'movement_date' => now(),
-                ]);
+                $product->update(['cost' => $item->unit_cost]); // costo al último de compra
+                $stock->move($product->id, (float) $item->quantity, 'entrada', $purchaseOrder->company_id, $purchaseOrder->entry_number, 'Recepción OC ' . $purchaseOrder->entry_number, warehouseId: $warehouseId);
             }
 
-            $purchaseOrder->update(['status' => 'recibida']);
+            $purchaseOrder->update(['status' => 'recibida', 'warehouse_id' => $warehouseId]);
 
             // A crédito: la deuda con el proveedor nace al recibir la mercadería.
             if ($purchaseOrder->isOnCredit()) {

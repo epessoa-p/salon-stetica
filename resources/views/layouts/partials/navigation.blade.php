@@ -70,6 +70,9 @@
                 ['label' => 'Categorías',  'icon' => 'bi-tags',     'built' => true, 'route' => 'product-categories.index', 'pattern' => 'product-categories.*'],
                 ['label' => 'Marcas',      'icon' => 'bi-bookmark', 'built' => true, 'route' => 'brands.index',             'pattern' => 'brands.*'],
                 ['label' => 'Existencias', 'icon' => 'bi-boxes',    'built' => true, 'route' => 'stock.index',              'pattern' => 'stock.*'],
+                ['label' => 'Traspasos',   'icon' => 'bi-arrow-left-right', 'built' => true, 'route' => 'stock-transfers.index', 'pattern' => 'stock-transfers.*',
+                 // Usa los permisos de existencias (stock.view).
+                 'visible' => $u->is_super_admin || ($co && $u->hasPermissionInCompany('stock.view', $co))],
             ],
         ],
         [

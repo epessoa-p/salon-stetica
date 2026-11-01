@@ -19,15 +19,24 @@
             <form action="{{ route('stock.movement.store') }}" method="POST">
                 @csrf
                 <div class="mb-3">
+                    <label class="form-label">Almacén <span class="text-danger">*</span></label>
+                    <select name="warehouse_id" id="mv-warehouse" class="form-select" required>
+                        @foreach($warehouses as $w)
+                            <option value="{{ $w->id }}" {{ (string) old('warehouse_id', $defaultWarehouse) === (string) $w->id ? 'selected' : '' }}>{{ $w->label() }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="mb-3">
                     <label class="form-label">Producto <span class="text-danger">*</span></label>
-                    <select name="product_id" class="form-select" required>
+                    <select name="product_id" id="mv-product" class="form-select" required>
                         <option value="">Seleccionar producto</option>
                         @foreach($products as $p)
                             <option value="{{ $p->id }}" {{ (string) old('product_id', $selectedProduct) === (string) $p->id ? 'selected' : '' }}>
-                                {{ $p->name }} (stock: {{ rtrim(rtrim(number_format($p->current_stock, 2), '0'), '.') }})
+                                {{ $p->name }} (total: {{ rtrim(rtrim(number_format($p->current_stock, 2), '0'), '.') }})
                             </option>
                         @endforeach
                     </select>
+                    <small class="text-muted" id="mv-available"></small>
                 </div>
                 <div class="row g-3">
                     <div class="col-md-6">
@@ -37,7 +46,7 @@
                                 <option value="{{ $key }}" {{ old('type') === $key ? 'selected' : '' }}>{{ $label }}</option>
                             @endforeach
                         </select>
-                        <small class="text-muted">Ajuste = fija el stock al valor indicado.</small>
+                        <small class="text-muted">Ajuste = fija el stock de ese almacén al valor indicado (conteo físico). Para pasar productos a otra sucursal usa Traspasos.</small>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Cantidad <span class="text-danger">*</span></label>
@@ -60,4 +69,18 @@
         </div>
     </div>
 </div>
+@push('scripts')
+<script>
+    // Existencia del producto en el almacén elegido.
+    (function () {
+        var stocks = @json($stocks), w = document.getElementById('mv-warehouse'), p = document.getElementById('mv-product'), out = document.getElementById('mv-available');
+        var show = function () {
+            if (!p.value) { out.textContent = ''; return; }
+            var q = (stocks[p.value] || {})[w.value] || 0;
+            out.textContent = 'En este almacén: ' + (Math.round(q * 100) / 100);
+        };
+        w.addEventListener('change', show); p.addEventListener('change', show); show();
+    })();
+</script>
+@endpush
 @endsection

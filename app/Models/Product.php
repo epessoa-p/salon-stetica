@@ -47,6 +47,12 @@ class Product extends Model
         return $this->hasMany(InventoryMovement::class);
     }
 
+    /** Existencias por almacén (la suma es current_stock). */
+    public function stocks(): HasMany
+    {
+        return $this->hasMany(ProductStock::class);
+    }
+
     public function isLowStock(): bool
     {
         return $this->min_stock > 0 && $this->current_stock <= $this->min_stock;

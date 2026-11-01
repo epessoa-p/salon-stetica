@@ -26,6 +26,7 @@ class SaleRecorder
         protected CreditService $credit,
         protected StockService $stock,
         protected ReceivableService $receivables,
+        protected BranchResolver $branches,
     ) {
     }
 
@@ -50,7 +51,8 @@ class SaleRecorder
 
         $sale = Sale::create([
             'company_id'              => $companyId,
-            'branch_id'               => $validated['branch_id'] ?? null,
+            // La indicada, la de la caja, la del profesional o la única de la empresa.
+            'branch_id'               => $this->branches->resolve($companyId, $validated['branch_id'] ?? null, $session?->id, $principalId, auth()->id()),
             'client_id'               => $validated['client_id'] ?? null,
             'personal_id'             => $principalId,
             'cash_session_id'         => $session?->id,
@@ -97,7 +99,7 @@ class SaleRecorder
                         'total'       => $c['total'],
                     ]);
                     if ($c['product_id']) {
-                        $this->stock->move($c['product_id'], -$c['quantity'], 'salida', $companyId, $number, 'Venta ' . $number);
+                        $this->stock->move($c['product_id'], -$c['quantity'], 'salida', $companyId, $number, 'Venta ' . $number, $sale->branch_id);
                     }
                 }
                 continue;
@@ -124,7 +126,7 @@ class SaleRecorder
             ]);
 
             if ($line['product_id']) {
-                $this->stock->move($line['product_id'], -$line['quantity'], 'salida', $companyId, $number, 'Venta ' . $number);
+                $this->stock->move($line['product_id'], -$line['quantity'], 'salida', $companyId, $number, 'Venta ' . $number, $sale->branch_id);
             }
 
             if ($line['membership_plan_id']) {

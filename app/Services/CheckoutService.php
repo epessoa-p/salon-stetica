@@ -46,6 +46,8 @@ class CheckoutService
         protected CreditService $credit,
         protected ReceivableService $receivables,
         protected CouponService $coupons,
+        protected StockService $stock,
+        protected BranchResolver $branches,
     ) {
     }
 
@@ -266,7 +268,9 @@ class CheckoutService
             ];
         }
 
-        $errors = array_merge($errors, $this->stockErrors($productNeeds, $companyId));
+        // El stock se valida en el almacén de la sucursal de la venta.
+        $branchId = $this->branches->resolve($companyId, $data['branch_id'] ?? null, $data['cash_session_id'] ?? null, $data['personal_id'] ?? null, auth()->id());
+        $errors = array_merge($errors, $this->stockErrors($productNeeds, $companyId, $this->stock->warehouseFor($companyId, $branchId)));
 
         $afterLines = max(0, round($subtotal - $lineDiscounts - $membershipDiscount - $packageDiscount - $promotionDiscount, 2));
         $globalDiscount = min($afterLines, round((float) ($data['global_discount'] ?? 0), 2));
@@ -501,18 +505,21 @@ class CheckoutService
         ];
     }
 
-    /** Stock suficiente para todos los productos del carrito (sueltos y en combos). */
-    protected function stockErrors(array $needs, int $companyId): array
+    /** Stock suficiente en el almacén de la venta para todos los productos del carrito (sueltos y en combos). */
+    protected function stockErrors(array $needs, int $companyId, ?int $warehouseId): array
     {
         if (!$needs) {
             return [];
         }
 
+        $have = $this->stock->available(array_keys($needs), $companyId, $warehouseId);
+        $where = $warehouseId ? ' en ' . \App\Models\Warehouse::withoutGlobalScopes()->whereKey($warehouseId)->value('name') : '';
+
         return Product::withoutGlobalScopes()->where('company_id', $companyId)->whereIn('id', array_keys($needs))->get()
-            ->filter(fn ($p) => $needs[$p->id] > (float) $p->current_stock + 0.0001)
-            ->map(fn ($p) => "No hay stock suficiente de {$p->name}: la venta pide "
+            ->filter(fn ($p) => $needs[$p->id] > ($have[$p->id] ?? 0) + 0.0001)
+            ->map(fn ($p) => "No hay stock suficiente de {$p->name}{$where}: la venta pide "
                 . rtrim(rtrim(number_format($needs[$p->id], 2), '0'), '.') . ' y hay '
-                . rtrim(rtrim(number_format((float) $p->current_stock, 2), '0'), '.') . '.')
+                . rtrim(rtrim(number_format($have[$p->id] ?? 0, 2), '0'), '.') . '.')
             ->values()->all();
     }
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Caja;
 use App\Models\Branch;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class CajaController extends Controller
 {
@@ -30,7 +31,7 @@ class CajaController extends Controller
         $validated = $request->validate([
             'name'        => 'required|string|max:255',
             'code'        => 'nullable|string|max:50',
-            'branch_id'   => 'nullable|exists:branches,id',
+            'branch_id'   => ['required', Rule::exists('branches', 'id')->where('company_id', auth()->user()->getCurrentCompany()?->id)->whereNull('deleted_at')],
             'active'      => 'boolean',
         ]);
 
@@ -62,7 +63,7 @@ class CajaController extends Controller
         $validated = $request->validate([
             'name'        => 'required|string|max:255',
             'code'        => 'nullable|string|max:50',
-            'branch_id'   => 'nullable|exists:branches,id',
+            'branch_id'   => ['required', Rule::exists('branches', 'id')->where('company_id', auth()->user()->getCurrentCompany()?->id)->whereNull('deleted_at')],
             'active'      => 'boolean',
         ]);
 

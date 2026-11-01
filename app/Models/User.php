@@ -167,5 +167,26 @@ class User extends Authenticatable
 
         return $this->activeCompanies()->first();
     }
-}
 
+    /**
+     * Nombre de usuario libre a partir del nombre completo («Ana Pérez» →
+     * ana_perez, ana_perez_1…). Sirve para iniciar sesión sin correo.
+     */
+    public static function uniqueUsername(string $fullName): string
+    {
+        $base = \Illuminate\Support\Str::of($fullName)
+            ->lower()
+            ->ascii()
+            ->replaceMatches('/[^a-z0-9\s]/', '')
+            ->trim()
+            ->replace(' ', '_')
+            ->toString() ?: 'usuario';
+
+        $candidate = $base;
+        for ($i = 1; static::withTrashed()->where('name', $candidate)->exists(); $i++) {
+            $candidate = $base . '_' . $i;
+        }
+
+        return $candidate;
+    }
+}

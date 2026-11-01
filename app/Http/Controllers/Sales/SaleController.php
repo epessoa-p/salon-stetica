@@ -166,7 +166,7 @@ class SaleController extends Controller
         $credit = $this->credit->reverseForVoidedSale($sale);
 
         foreach ($sale->items()->whereNotNull('product_id')->get() as $item) {
-            $this->stock->move((int) $item->product_id, (float) $item->quantity, 'entrada', $sale->company_id, $sale->sale_number, 'Anulación venta ' . $sale->sale_number);
+            $this->stock->move((int) $item->product_id, (float) $item->quantity, 'entrada', $sale->company_id, $sale->sale_number, 'Anulación venta ' . $sale->sale_number, $sale->branch_id);
         }
 
         $session = $sale->session;

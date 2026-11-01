@@ -55,7 +55,7 @@ class BranchController extends Controller
                 'email' => 'nullable|email|max:255',
                 'address' => 'nullable|string|max:255',
                 'manager_name' => 'nullable|string|max:255',
-                'warehouse_id' => ['required', 'exists:warehouses,id'],
+                'warehouse_id' => ['nullable', 'exists:warehouses,id'],
                 'active' => 'sometimes|boolean',
             ]);
 
@@ -68,14 +68,11 @@ class BranchController extends Controller
                 return back()->withInput()->withErrors(['error' => 'Has alcanzado el límite de sucursales de tu plan. Actualiza tu plan para agregar más.']);
             }
 
-            $warehouse = Warehouse::findOrFail($validated['warehouse_id']);
-            if ($warehouse->company_id !== $companyId) {
-                abort(403);
-            }
+            $warehouseId = $this->warehouseFor($validated, (int) $companyId);
 
             Branch::create([
                 'company_id' => $companyId,
-                'warehouse_id' => $validated['warehouse_id'],
+                'warehouse_id' => $warehouseId,
                 'name' => $validated['name'],
                 'code' => $validated['code'] ?? null,
                 'phone' => $validated['phone'] ?? null,
@@ -86,6 +83,8 @@ class BranchController extends Controller
             ]);
 
             return redirect()->route('branches.index')->with('success', 'Sucursal creada exitosamente.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Throwable $exception) {
             Log::error('Error al crear sucursal', ['message' => $exception->getMessage()]);
             return back()->withInput()->withErrors(['error' => 'No fue posible crear la sucursal.']);
@@ -127,7 +126,7 @@ class BranchController extends Controller
                 'email' => 'nullable|email|max:255',
                 'address' => 'nullable|string|max:255',
                 'manager_name' => 'nullable|string|max:255',
-                'warehouse_id' => ['required', 'exists:warehouses,id'],
+                'warehouse_id' => ['nullable', 'exists:warehouses,id'],
                 'active' => 'sometimes|boolean',
             ]);
 
@@ -135,23 +134,35 @@ class BranchController extends Controller
                 return back()->withInput()->withErrors(['company_id' => 'Debes seleccionar una empresa.']);
             }
 
-            $warehouse = Warehouse::findOrFail($validated['warehouse_id']);
-            if ($warehouse->company_id !== $companyId) {
-                abort(403);
-            }
+            $warehouseId = $this->warehouseFor($validated, (int) $companyId);
 
             $branch->update([
                 ...$validated,
                 'company_id' => $companyId,
-                'warehouse_id' => $validated['warehouse_id'],
+                'warehouse_id' => $warehouseId,
                 'active' => request()->boolean('active', false),
             ]);
 
             return redirect()->route('branches.index')->with('success', 'Sucursal actualizada exitosamente.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Throwable $exception) {
             Log::error('Error al actualizar sucursal', ['branch_id' => $branch->id, 'message' => $exception->getMessage()]);
             return back()->withInput()->withErrors(['error' => 'No fue posible actualizar la sucursal.']);
         }
+    }
+
+    /** El almacén elegido (de la empresa) o uno nuevo para la sucursal. */
+    protected function warehouseFor(array $validated, int $companyId): int
+    {
+        if (!empty($validated['warehouse_id'])) {
+            $warehouse = Warehouse::findOrFail($validated['warehouse_id']);
+            abort_if((int) $warehouse->company_id !== $companyId, 403);
+
+            return $warehouse->id;
+        }
+
+        return Warehouse::createForBranch($companyId, $validated['name'], $validated['address'] ?? null)->id;
     }
 
     public function destroy(Branch $branch)
@@ -161,6 +172,8 @@ class BranchController extends Controller
         try {
             $branch->delete();
             return redirect()->route('branches.index')->with('success', 'Sucursal eliminada exitosamente.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Throwable $exception) {
             Log::error('Error al eliminar sucursal', ['branch_id' => $branch->id, 'message' => $exception->getMessage()]);
             return back()->withErrors(['error' => 'No fue posible eliminar la sucursal.']);

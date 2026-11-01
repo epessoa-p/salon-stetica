@@ -140,7 +140,7 @@ class SaleReturnService
                 $quantities[$item->id] = $row['quantity'];
 
                 if ($row['restock']) {
-                    $this->stock->move((int) $item->product_id, $row['quantity'], 'entrada', $sale->company_id, $return->return_number, 'Devolución ' . $return->return_number . ' · venta ' . $sale->sale_number);
+                    $this->stock->move((int) $item->product_id, $row['quantity'], 'entrada', $sale->company_id, $return->return_number, 'Devolución ' . $return->return_number . ' · venta ' . $sale->sale_number, $sale->branch_id);
                 }
                 if ($item->isMembershipSale()) {
                     $this->memberships->cancelForLine($item, 'devolución ' . $return->return_number);

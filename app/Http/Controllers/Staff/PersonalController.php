@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Staff;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Cargo;
 use App\Models\Company;
 use App\Models\Personal;
@@ -46,6 +47,7 @@ class PersonalController extends Controller
 
         return view('staff.personal.create', [
             'cargos' => $cargos,
+            'branches' => $this->branchesOf($companyId),
             'companies' => $authUser->is_super_admin
                 ? Company::orderBy('name')->get()
                 : collect([$authUser->getCurrentCompany()])->filter(),
@@ -85,6 +87,7 @@ class PersonalController extends Controller
             $validated = $request->validate([
                 'company_id' => ['nullable', 'exists:companies,id'],
                 'cargo_id' => ['required', 'exists:cargos,id'],
+                'branch_id' => ['nullable', 'integer'],
                 'full_name' => ['required', 'string', 'max:255'],
                 'id_number' => ['nullable', 'string', 'max:50'],
                 'phone' => ['nullable', 'string', 'max:30'],
@@ -144,6 +147,7 @@ class PersonalController extends Controller
                 Personal::create([
                     'company_id' => $companyId,
                     'cargo_id' => $cargo->id,
+                    'branch_id' => $this->validBranch($validated['branch_id'] ?? null, $companyId),
                     'user_id' => $userId,
                     'full_name' => trim($validated['full_name']),
                     'id_number' => $validated['id_number'] ?? null,
@@ -186,6 +190,7 @@ class PersonalController extends Controller
         return view('staff.personal.edit', [
             'personal' => $personal,
             'cargos' => $cargos,
+            'branches' => $this->branchesOf($companyId),
             'companies' => $authUser->is_super_admin
                 ? Company::orderBy('name')->get()
                 : collect([$authUser->getCurrentCompany()])->filter(),
@@ -209,6 +214,7 @@ class PersonalController extends Controller
             $validated = $request->validate([
                 'company_id' => ['nullable', 'exists:companies,id'],
                 'cargo_id' => ['required', 'exists:cargos,id'],
+                'branch_id' => ['nullable', 'integer'],
                 'full_name' => ['required', 'string', 'max:255'],
                 'id_number' => ['nullable', 'string', 'max:50'],
                 'phone' => ['nullable', 'string', 'max:30'],
@@ -272,6 +278,7 @@ class PersonalController extends Controller
                 $personal->update([
                     'company_id' => $companyId,
                     'cargo_id' => $cargo->id,
+                    'branch_id' => $this->validBranch($validated['branch_id'] ?? null, $companyId),
                     'user_id' => $user?->id,
                     'full_name' => trim($validated['full_name']),
                     'id_number' => $validated['id_number'] ?? null,
@@ -316,28 +323,25 @@ class PersonalController extends Controller
         }
     }
 
+    /** Sucursales activas de la empresa (para el formulario). */
+    protected function branchesOf(?int $companyId)
+    {
+        return $companyId ? Branch::where('company_id', $companyId)->where('active', true)->orderBy('name')->get(['id', 'name']) : collect();
+    }
+
+    /** La sucursal elegida, si es de la empresa. Sin elegir y con una sola sucursal, esa. */
+    protected function validBranch($branchId, int $companyId): ?int
+    {
+        $branches = $this->branchesOf($companyId);
+        if ($branchId && $branches->contains('id', (int) $branchId)) {
+            return (int) $branchId;
+        }
+
+        return $branches->count() === 1 ? $branches->first()->id : null;
+    }
+
     protected function makeUniqueUsername(string $fullName): string
     {
-        $base = Str::of($fullName)
-            ->lower()
-            ->ascii()
-            ->replaceMatches('/[^a-z0-9\s]/', '')
-            ->trim()
-            ->replace(' ', '_')
-            ->toString();
-
-        if ($base === '') {
-            $base = 'usuario';
-        }
-
-        $candidate = $base;
-        $counter = 1;
-
-        while (User::where('name', $candidate)->exists()) {
-            $candidate = $base . '_' . $counter;
-            $counter++;
-        }
-
-        return $candidate;
+        return User::uniqueUsername($fullName);
     }
 }

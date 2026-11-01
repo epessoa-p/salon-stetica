@@ -165,7 +165,7 @@ class PurchaseReturnController extends Controller
                 'unit_cost'       => $row['item']->unit_cost,
                 'total'           => $row['total'],
             ]);
-            $this->stock->move((int) $row['item']->product_id, -$row['quantity'], 'salida', $order->company_id, $number, 'Devolución a proveedor · OC ' . $order->entry_number);
+            $this->stock->move((int) $row['item']->product_id, -$row['quantity'], 'salida', $order->company_id, $number, 'Devolución a proveedor · OC ' . $order->entry_number, warehouseId: $order->warehouse_id);
         }
 
         // Nota de crédito sobre una orden a crédito: se descuenta de la deuda.
@@ -206,6 +206,8 @@ class PurchaseReturnController extends Controller
     protected function returnableLines(PurchaseOrder $order)
     {
         $order->loadMissing('items.product');
+        // Lo que se puede devolver depende de lo que queda en el almacén de la recepción.
+        $inStock = $this->stock->available($order->items->pluck('product_id')->filter()->all(), $order->company_id, $order->warehouse_id ?: $this->stock->defaultWarehouse($order->company_id));
         $returned = PurchaseReturnItem::query()
             ->whereIn('entry_detail_id', $order->items->pluck('id'))
             ->selectRaw('entry_detail_id, SUM(quantity) AS q')->groupBy('entry_detail_id')
@@ -215,7 +217,7 @@ class PurchaseReturnController extends Controller
             'item'       => $item,
             'returned'   => (float) ($returned[$item->id] ?? 0),
             'returnable' => max(0, round((float) $item->quantity - (float) ($returned[$item->id] ?? 0), 2)),
-            'stock'      => (float) ($item->product?->current_stock ?? 0),
+            'stock'      => (float) ($inStock[$item->product_id] ?? 0),
         ]);
     }
 

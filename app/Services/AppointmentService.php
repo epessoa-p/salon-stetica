@@ -18,7 +18,7 @@ use Illuminate\Validation\ValidationException;
  */
 class AppointmentService
 {
-    public function __construct(protected ScheduleService $schedules)
+    public function __construct(protected ScheduleService $schedules, protected BranchResolver $branches)
     {
     }
 
@@ -42,6 +42,9 @@ class AppointmentService
         $data['status'] = $data['status'] ?? $existing?->status ?? 'pendiente';
         $data['outside_schedule'] = $this->checkSchedule($data, $forceOutside, $existing?->id);
         unset($data['force_outside'], $data['duration_minutes']);
+
+        // Sucursal: la indicada, la del profesional o la única de la empresa.
+        $data['branch_id'] = $this->branches->resolve($companyId, $data['branch_id'] ?? $existing?->branch_id, null, $data['personal_id'] ?? null, auth()->id());
 
         return $data;
     }

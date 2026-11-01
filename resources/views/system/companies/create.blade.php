@@ -59,6 +59,58 @@
                 @error('plan_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
 
+            {{-- La empresa queda lista para usarse: sucursal, almacén, administrador y caja. --}}
+            <div class="border rounded-3 p-3 mb-3" style="background: var(--accent-soft, #faf6f8)">
+                <h6 class="fw-bold mb-1"><i class="bi bi-shop"></i> Sucursal principal</h6>
+                <small class="text-muted d-block mb-3">Se crea con su almacén y la caja principal. Luego se pueden agregar más sucursales.</small>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="branch_name" class="form-label">Nombre de la sucursal</label>
+                        <input type="text" id="branch_name" name="branch_name" class="form-control @error('branch_name') is-invalid @enderror"
+                               value="{{ old('branch_name') }}" placeholder="SUCURSAL PRINCIPAL">
+                        @error('branch_name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="col-md-6">
+                        <label for="branch_address" class="form-label">Dirección de la sucursal</label>
+                        <input type="text" id="branch_address" name="branch_address" class="form-control @error('branch_address') is-invalid @enderror"
+                               value="{{ old('branch_address') }}" placeholder="La de la empresa">
+                        @error('branch_address')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+            </div>
+
+            <div class="border rounded-3 p-3 mb-3" style="background: var(--accent-soft, #faf6f8)">
+                <h6 class="fw-bold mb-1"><i class="bi bi-person-badge"></i> Acceso del administrador</h6>
+                <small class="text-muted d-block mb-3">Se crea su usuario y su ficha de personal en la sucursal principal. Al guardar verás sus credenciales para entregárselas al cliente.</small>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="admin_name" class="form-label">Nombre completo <span class="text-danger">*</span></label>
+                        <input type="text" id="admin_name" name="admin_name" class="form-control @error('admin_name') is-invalid @enderror"
+                               value="{{ old('admin_name') }}" required>
+                        @error('admin_name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="col-md-6">
+                        <label for="admin_email" class="form-label">Correo (para iniciar sesión) <span class="text-danger">*</span></label>
+                        <input type="email" id="admin_email" name="admin_email" class="form-control no-uppercase @error('admin_email') is-invalid @enderror"
+                               value="{{ old('admin_email') }}" required>
+                        @error('admin_email')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="col-md-6">
+                        <label for="admin_password" class="form-label">Contraseña</label>
+                        <div class="input-group">
+                            <input type="password" id="admin_password" name="admin_password" autocomplete="new-password"
+                                   class="form-control no-uppercase @error('admin_password') is-invalid @enderror" placeholder="Vacía = se genera una segura">
+                            <button class="btn btn-outline-secondary" type="button" title="Mostrar u ocultar"
+                                    onclick="const i = document.getElementById('admin_password'); i.type = i.type === 'password' ? 'text' : 'password';">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            @error('admin_password')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <small class="text-muted">Mínimo 8 caracteres. Si la dejas vacía, el sistema genera una.</small>
+                    </div>
+                </div>
+            </div>
+
             @include('system.companies.partials.colors', [
                 'primaryColor'   => old('primary_color', \App\Models\Company::DEFAULT_PRIMARY_COLOR),
                 'secondaryColor' => old('secondary_color', \App\Models\Company::DEFAULT_SECONDARY_COLOR),

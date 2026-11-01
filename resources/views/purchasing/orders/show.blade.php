@@ -15,9 +15,14 @@
         <div class="d-flex gap-2">
             <a href="{{ route('purchase-orders.index') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Volver</a>
             @if($order->status === 'pendiente')
-                <form action="{{ route('purchase-orders.receive', $order) }}" method="POST" onsubmit="return confirm('¿Recibir la orden? Se sumará el stock de cada producto.')">
+                <form action="{{ route('purchase-orders.receive', $order) }}" method="POST" class="d-flex gap-2" onsubmit="return confirm('¿Recibir la orden? Se sumará el stock de cada producto en el almacén elegido.')">
                     @csrf
-                    <button class="btn btn-success"><i class="bi bi-box-arrow-in-down"></i> Recibir</button>
+                    @if($warehouses->count() > 1)
+                        <select name="warehouse_id" class="form-select" title="Almacén donde entra la mercadería">
+                            @foreach($warehouses as $w)<option value="{{ $w->id }}" @selected($w->id === $defaultWarehouse)>{{ $w->label() }}</option>@endforeach
+                        </select>
+                    @endif
+                    <button class="btn btn-success text-nowrap"><i class="bi bi-box-arrow-in-down"></i> Recibir</button>
                 </form>
                 <form action="{{ route('purchase-orders.void', $order) }}" method="POST" onsubmit="return confirm('¿Anular la orden?')">
                     @csrf

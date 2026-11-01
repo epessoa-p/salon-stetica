@@ -17,7 +17,16 @@ class StoreCompanyRequest extends FormRequest
         // En edición se ignora la propia empresa para no marcar el RUC como repetido.
         $companyId = $this->route('company')?->id;
 
-        return [
+        // Al crear se arma también la sucursal principal y el acceso del administrador.
+        $onCreate = $companyId ? [] : [
+            'branch_name'    => ['nullable', 'string', 'max:120'],
+            'branch_address' => ['nullable', 'string', 'max:255'],
+            'admin_name'     => ['required', 'string', 'max:120'],
+            'admin_email'    => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            'admin_password' => ['nullable', 'string', 'min:8', 'max:100'],
+        ];
+
+        return $onCreate + [
             'name' => 'required|string|max:255',
             'ruc' => [
                 'nullable', 'string', 'max:20',
@@ -39,6 +48,10 @@ class StoreCompanyRequest extends FormRequest
         return [
             'name.required' => 'El nombre de la empresa es requerido',
             'ruc.unique' => 'Este RUC ya está registrado',
+            'admin_name.required' => 'Escribe el nombre del administrador de la empresa.',
+            'admin_email.required' => 'Escribe el correo del administrador: con él inicia sesión.',
+            'admin_email.unique' => 'Ese correo ya tiene un usuario en el sistema.',
+            'admin_password.min' => 'La contraseña debe tener al menos 8 caracteres (o déjala vacía para generarla).',
         ];
     }
 }

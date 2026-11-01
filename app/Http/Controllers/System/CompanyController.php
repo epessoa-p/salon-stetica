@@ -7,6 +7,8 @@ use App\Http\Requests\StoreCompanyRequest;
 use App\Models\Company;
 use App\Models\Plan;
 use App\Models\Subscription;
+use App\Services\CompanyProvisioner;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class CompanyController extends Controller
@@ -33,29 +35,38 @@ class CompanyController extends Controller
     {
         $data = $request->validated();
         $planId = $data['plan_id'] ?? null;
-        unset($data['plan_id']);
+        $setup = array_intersect_key($data, array_flip(['branch_name', 'branch_address', 'admin_name', 'admin_email', 'admin_password']));
+        unset($data['plan_id'], $data['branch_name'], $data['branch_address'], $data['admin_name'], $data['admin_email'], $data['admin_password']);
 
         if ($request->hasFile('logo')) {
             $data['logo'] = $request->file('logo')->store('logos', 'public');
         }
 
-        $company = Company::create($data);
+        [$company, $credentials] = DB::transaction(function () use ($data, $planId, $setup) {
+            $company = Company::create($data);
 
-        // Si se seleccionó un plan, se crea la suscripción iniciando el periodo de prueba.
-        if ($planId && ($plan = Plan::find($planId))) {
-            Subscription::create([
-                'company_id' => $company->id,
-                'plan_id' => $plan->id,
-                'status' => 'trial',
-                'trial_ends_at' => now()->addDays((int) ($plan->trial_days ?? config('saas.default_trial_days'))),
-                'starts_at' => now(),
-                'ends_at' => null,
-                'amount' => $plan->price,
-                'created_by' => auth()->id(),
-            ]);
-        }
+            // Si se seleccionó un plan, se crea la suscripción iniciando el periodo de prueba.
+            if ($planId && ($plan = Plan::find($planId))) {
+                Subscription::create([
+                    'company_id' => $company->id,
+                    'plan_id' => $plan->id,
+                    'status' => 'trial',
+                    'trial_ends_at' => now()->addDays((int) ($plan->trial_days ?? config('saas.default_trial_days'))),
+                    'starts_at' => now(),
+                    'ends_at' => null,
+                    'amount' => $plan->price,
+                    'created_by' => auth()->id(),
+                ]);
+            }
 
-        return redirect()->route('companies.index')->with('success', 'Empresa creada exitosamente');
+            // Sucursal, almacén, administrador (usuario + personal) y caja: lista para usarse.
+            return [$company, app(CompanyProvisioner::class)->provision($company, $setup)];
+        });
+
+        // Las credenciales se muestran una sola vez en la ficha de la empresa.
+        return redirect()->route('companies.show', $company)
+            ->with('success', 'Empresa creada y lista para usarse.')
+            ->with('credentials', $credentials);
     }
 
     public function show(Company $company)

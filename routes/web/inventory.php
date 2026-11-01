@@ -4,6 +4,7 @@ use App\Http\Controllers\Inventory\BrandController;
 use App\Http\Controllers\Inventory\ProductCategoryController;
 use App\Http\Controllers\Inventory\ProductController;
 use App\Http\Controllers\Inventory\StockController;
+use App\Http\Controllers\Inventory\StockTransferController;
 use Illuminate\Support\Facades\Route;
 
 // Módulo Inventario
@@ -45,4 +46,13 @@ Route::prefix('admin/stock')->name('stock.')->middleware('check-permission:stock
     Route::get('/movements', [StockController::class, 'movements'])->name('movements');
     Route::get('/movement', [StockController::class, 'createMovement'])->name('movement.create')->middleware('check-permission:stock.manage');
     Route::post('/movement', [StockController::class, 'storeMovement'])->name('movement.store')->middleware('check-permission:stock.manage');
+});
+
+// Traspasos entre almacenes (sucursales)
+Route::prefix('admin/stock-transfers')->name('stock-transfers.')->middleware('check-permission:stock.view')->group(function () {
+    Route::get('/', [StockTransferController::class, 'index'])->name('index');
+    Route::get('/create', [StockTransferController::class, 'create'])->name('create')->middleware('check-permission:stock.manage');
+    Route::post('/', [StockTransferController::class, 'store'])->name('store')->middleware('check-permission:stock.manage');
+    Route::get('/{stockTransfer}', [StockTransferController::class, 'show'])->name('show');
+    Route::post('/{stockTransfer}/void', [StockTransferController::class, 'void'])->name('void')->middleware('check-permission:stock.manage');
 });

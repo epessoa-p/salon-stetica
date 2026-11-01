@@ -31,6 +31,11 @@ class InventoryMovement extends Model
         'ajuste'  => 'Ajuste',
     ];
 
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
+    }
+
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);

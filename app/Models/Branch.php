@@ -15,6 +15,7 @@ class Branch extends Model
 
     protected $fillable = [
         'company_id',
+        'warehouse_id',
         'name',
         'code',
         'phone',
@@ -37,5 +38,16 @@ class Branch extends Model
     public function cajas(): HasMany
     {
         return $this->hasMany(Caja::class);
+    }
+
+    /** Almacén principal: de ahí salen los productos que vende la sucursal. */
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
+    }
+
+    public function personals(): HasMany
+    {
+        return $this->hasMany(Personal::class);
     }
 }

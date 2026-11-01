@@ -238,11 +238,12 @@
                         <i class="bi bi-sliders"></i> Más opciones
                     </button>
                     <div class="collapse" id="pos-more">
-                        @if($branches->count())
+                        {{-- Con una sola sucursal no hay nada que elegir: el servidor la asigna. --}}
+                        @if($branches->count() > 1)
                             <label class="form-label small mt-2 mb-1" for="pos-branch">Sucursal</label>
                             <select id="pos-branch" class="form-select form-select-sm">
-                                <option value="">Sin sucursal</option>
-                                @foreach($branches as $b)<option value="{{ $b->id }}">{{ $b->name }}</option>@endforeach
+                                <option value="">La de la caja o del profesional</option>
+                                @foreach($branches as $b)<option value="{{ $b->id }}" @selected($b->id === $defaultBranch)>{{ $b->name }}</option>@endforeach
                             </select>
                         @endif
                         <label class="form-label small mt-2 mb-1" for="pos-notes">Notas</label>

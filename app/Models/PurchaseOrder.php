@@ -21,6 +21,12 @@ class PurchaseOrder extends Model
         'entry_date', 'notes', 'status', 'payment_type', 'credit_days', 'total', 'created_by',
     ];
 
+    /** Almacén donde se recibió (de ahí sale una devolución al proveedor). */
+    public function warehouse(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
+    }
+
     protected $casts = [
         'entry_date' => 'datetime',
         'total' => 'decimal:2',
