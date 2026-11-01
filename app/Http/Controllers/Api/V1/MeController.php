@@ -49,6 +49,10 @@ class MeController extends ApiController
                 'cash_open'       => $company->planAllows('finance') && $this->can('cash.open'),
                 'cash_move'       => $company->planAllows('finance') && $this->can('cash.move'),
                 'cash_close'      => $company->planAllows('finance') && $this->can('cash.close'),
+                'services_view'   => $company->planAllows('catalog') && $this->can('services.view'),
+                'services_create' => $company->planAllows('catalog') && $this->can('services.create'),
+                'services_edit'   => $company->planAllows('catalog') && $this->can('services.edit'),
+                'reports'         => $this->can('reports.view') && (bool) app(\App\Http\Controllers\Reports\ReportController::class)->availableFor(auth()->user(), $company),
             ],
         ]);
     }

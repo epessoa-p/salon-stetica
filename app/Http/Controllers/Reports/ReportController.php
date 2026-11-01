@@ -31,17 +31,7 @@ class ReportController extends Controller
             return view('reports.index', ['noCompany' => true, 'available' => [], 'type' => null]);
         }
 
-        $can = fn (string $feature, string $perm) => $company->planAllows($feature)
-            && $user->hasPermissionInCompany($perm, $company);
-
-        $available = array_filter([
-            'ventas'     => $can('sales', 'sales.view') ? 'Ventas' : null,
-            'servicios'  => $can('catalog', 'services.view') ? 'Servicios' : null,
-            'clientes'   => $can('crm', 'clients.view') ? 'Clientes' : null,
-            'inventario' => $can('inventory', 'stock.view') ? 'Inventario' : null,
-            'compras'    => $can('purchasing', 'purchases.view') ? 'Compras' : null,
-            'caja'       => $can('finance', 'cash.view') ? 'Caja' : null,
-        ]);
+        $available = $this->availableFor($user, $company);
 
         $type = $request->input('type');
         if (!$type || !isset($available[$type])) {
@@ -60,18 +50,40 @@ class ReportController extends Controller
         ];
 
         if ($type) {
-            $data['report'] = match ($type) {
-                'ventas'     => $this->ventas($from, $to),
-                'servicios'  => $this->servicios($from, $to),
-                'clientes'   => $this->clientes($from, $to),
-                'inventario' => $this->inventario($from, $to),
-                'compras'    => $this->compras($from, $to),
-                'caja'       => $this->caja($from, $to, $company->id),
-                default      => [],
-            };
+            $data['report'] = $this->build($type, $from, $to, $company->id);
         }
 
         return view('reports.index', $data);
+    }
+
+    /** Reportes que puede ver el usuario: módulo en el plan + permiso. Lo usa también la app. */
+    public function availableFor(\App\Models\User $user, \App\Models\Company $company): array
+    {
+        $can = fn (string $feature, string $perm) => $company->planAllows($feature)
+            && ($user->is_super_admin || $user->hasPermissionInCompany($perm, $company));
+
+        return array_filter([
+            'ventas'     => $can('sales', 'sales.view') ? 'Ventas' : null,
+            'servicios'  => $can('catalog', 'services.view') ? 'Servicios' : null,
+            'clientes'   => $can('crm', 'clients.view') ? 'Clientes' : null,
+            'inventario' => $can('inventory', 'stock.view') ? 'Inventario' : null,
+            'compras'    => $can('purchasing', 'purchases.view') ? 'Compras' : null,
+            'caja'       => $can('finance', 'cash.view') ? 'Caja' : null,
+        ]);
+    }
+
+    /** Indicadores y tablas de un reporte (misma estructura en la web y la app). */
+    public function build(string $type, Carbon $from, Carbon $to, int $companyId): array
+    {
+        return match ($type) {
+            'ventas'     => $this->ventas($from, $to),
+            'servicios'  => $this->servicios($from, $to),
+            'clientes'   => $this->clientes($from, $to),
+            'inventario' => $this->inventario($from, $to),
+            'compras'    => $this->compras($from, $to),
+            'caja'       => $this->caja($from, $to, $companyId),
+            default      => [],
+        };
     }
 
     protected function ventas(Carbon $from, Carbon $to): array
@@ -99,6 +111,13 @@ class ReportController extends Controller
                         ->groupBy('payment_method')->orderByDesc('monto')->get()
                         ->map(fn ($r) => [ucfirst($r->payment_method), $r->n, number_format($r->monto, 2)])->all(),
                 ],
+                ...(\App\Models\Branch::count() > 1 ? [[
+                    'title' => 'Por sucursal',
+                    'head' => ['Sucursal', 'Ventas', 'Total'],
+                    'rows' => $base()->selectRaw('branch_id, COUNT(*) as n, SUM(total) as monto')
+                        ->groupBy('branch_id')->orderByDesc('monto')->with('branch')->get()
+                        ->map(fn ($r) => [$r->branch?->name ?? 'Sin sucursal', $r->n, number_format($r->monto, 2)])->all(),
+                ]] : []),
                 [
                     'title' => 'Por dia',
                     'head' => ['Dia', 'Ventas', 'Total'],

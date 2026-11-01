@@ -4,11 +4,13 @@ use App\Http\Controllers\Api\V1\AgendaController;
 use App\Http\Controllers\Api\V1\AttendanceController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CashController;
+use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\CommissionController;
 use App\Http\Controllers\Api\V1\ManagementController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\MessagingController;
+use App\Http\Controllers\Api\V1\ReportsController;
 use App\Http\Controllers\Api\V1\SalesController;
 use App\Http\Controllers\Api\V1\ScheduleController;
 use Illuminate\Support\Facades\Route;
@@ -77,6 +79,15 @@ Route::prefix('v1')->name('api.')->group(function () {
             Route::get('cash/{session}', [CashController::class, 'show'])->name('cash.show');
             Route::post('cash/{session}/movements', [CashController::class, 'movement'])->name('cash.movement');
             Route::post('cash/{session}/close', [CashController::class, 'close'])->name('cash.close');
+
+            // Catálogo de servicios
+            Route::get('services', [CatalogController::class, 'services'])->name('services');
+            Route::post('services', [CatalogController::class, 'store'])->name('services.store');
+            Route::put('services/{service}', [CatalogController::class, 'update'])->name('services.update');
+            Route::post('service-categories', [CatalogController::class, 'storeCategory'])->name('service-categories.store');
+
+            // Reportes (los mismos de la web)
+            Route::get('reports', [ReportsController::class, 'index'])->name('reports');
         });
     });
 });
