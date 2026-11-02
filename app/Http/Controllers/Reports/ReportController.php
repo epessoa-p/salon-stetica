@@ -69,6 +69,8 @@ class ReportController extends Controller
             'inventario' => $can('inventory', 'stock.view') ? 'Inventario' : null,
             'compras'    => $can('purchasing', 'purchases.view') ? 'Compras' : null,
             'caja'       => $can('finance', 'cash.view') ? 'Caja' : null,
+            'analisis'   => $can('sales', 'sales.view') ? 'Análisis' : null,
+            'ganancias'  => $can('sales', 'sales.view') && $can('finance', 'cash.view') ? 'Ganancias' : null,
         ]);
     }
 
@@ -82,8 +84,173 @@ class ReportController extends Controller
             'inventario' => $this->inventario($from, $to),
             'compras'    => $this->compras($from, $to),
             'caja'       => $this->caja($from, $to, $companyId),
+            'analisis'   => $this->analisis($from, $to),
+            'ganancias'  => $this->ganancias($from, $to),
             default      => [],
         };
+    }
+
+    /**
+     * Análisis: el período contra el anterior de igual duración, días y horas
+     * con más ventas, y lo que vendió cada profesional.
+     */
+    protected function analisis(Carbon $from, Carbon $to): array
+    {
+        $days = $from->diffInDays($to) + 1;
+        $prevFrom = $from->copy()->subDays($days);
+        $prevTo = $from->copy()->subSecond();
+
+        $stats = function (Carbon $a, Carbon $b) {
+            $sales = Sale::where('status', 'completada')->whereBetween('sale_date', [$a, $b]);
+            $total = (float) (clone $sales)->sum('total') - (float) \App\Models\SaleReturn::whereBetween('return_date', [$a, $b])->sum('total');
+            $count = (clone $sales)->count();
+            $appts = Appointment::whereBetween('starts_at', [$a, $b]);
+            $apptCount = (clone $appts)->count();
+            $lost = (clone $appts)->whereIn('status', ['cancelada', 'no_show'])->count();
+
+            return [
+                'total'   => $total,
+                'count'   => $count,
+                'ticket'  => $count ? $total / $count : 0,
+                'clients' => (clone $sales)->whereNotNull('client_id')->distinct()->count('client_id'),
+                'new'     => Client::whereBetween('created_at', [$a, $b])->count(),
+                'appts'   => $apptCount,
+                'lost'    => $apptCount ? $lost * 100 / $apptCount : 0,
+            ];
+        };
+        $now = $stats($from, $to);
+        $prev = $stats($prevFrom, $prevTo);
+        $delta = fn (float $a, float $b) => $b == 0.0 ? ($a > 0 ? 'nuevo' : '—') : (($a >= $b ? '+' : '') . number_format(($a - $b) * 100 / $b, 1) . ' %');
+        $money = fn ($n) => number_format((float) $n, 2);
+
+        $weekdays = [1 => 'Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        $base = fn () => Sale::where('status', 'completada')->whereBetween('sale_date', [$from, $to]);
+
+        return [
+            'kpis' => [
+                ['label' => 'Ventas netas vs anterior', 'value' => $delta($now['total'], $prev['total']), 'icon' => 'bi-graph-up-arrow', 'color' => $now['total'] >= $prev['total'] ? '#10b981' : '#ef4444'],
+                ['label' => 'Ticket promedio', 'value' => $money($now['ticket']), 'icon' => 'bi-receipt', 'color' => '#6366f1'],
+                ['label' => 'Clientes atendidos', 'value' => $now['clients'], 'icon' => 'bi-people', 'color' => '#ec4899'],
+                ['label' => 'Citas perdidas', 'value' => number_format($now['lost'], 1) . ' %', 'icon' => 'bi-calendar-x', 'color' => $now['lost'] > 15 ? '#ef4444' : '#f59e0b'],
+            ],
+            'tables' => [
+                [
+                    'title' => 'Comparación con el período anterior (' . $prevFrom->format('d/m') . '–' . $prevTo->format('d/m') . ')',
+                    'head' => ['Indicador', 'Ahora', 'Antes', 'Variación'],
+                    'rows' => [
+                        ['Ventas netas', $money($now['total']), $money($prev['total']), $delta($now['total'], $prev['total'])],
+                        ['N. de ventas', $now['count'], $prev['count'], $delta($now['count'], $prev['count'])],
+                        ['Ticket promedio', $money($now['ticket']), $money($prev['ticket']), $delta($now['ticket'], $prev['ticket'])],
+                        ['Clientes atendidos', $now['clients'], $prev['clients'], $delta($now['clients'], $prev['clients'])],
+                        ['Clientes nuevos', $now['new'], $prev['new'], $delta($now['new'], $prev['new'])],
+                        ['Citas', $now['appts'], $prev['appts'], $delta($now['appts'], $prev['appts'])],
+                        ['Canceladas o no asistió', number_format($now['lost'], 1) . ' %', number_format($prev['lost'], 1) . ' %', ''],
+                    ],
+                ],
+                [
+                    'title' => 'Ventas por día de la semana',
+                    'head' => ['Día', 'Ventas', 'Total'],
+                    'rows' => $base()->selectRaw('DAYOFWEEK(sale_date) as d, COUNT(*) as n, SUM(total) as monto')
+                        ->groupBy('d')->orderByDesc('monto')->get()
+                        ->map(fn ($r) => [$weekdays[(int) $r->d] ?? $r->d, $r->n, $money($r->monto)])->all(),
+                ],
+                [
+                    'title' => 'Horas con más ventas',
+                    'head' => ['Hora', 'Ventas', 'Total'],
+                    'rows' => $base()->selectRaw('HOUR(sale_date) as h, COUNT(*) as n, SUM(total) as monto')
+                        ->groupBy('h')->orderByDesc('n')->limit(8)->get()
+                        ->map(fn ($r) => [sprintf('%02d:00 – %02d:59', $r->h, $r->h), $r->n, $money($r->monto)])->all(),
+                ],
+                [
+                    'title' => 'Ventas por profesional',
+                    'head' => ['Profesional', 'Servicios', 'Total'],
+                    'rows' => SaleItem::selectRaw('personal_id, SUM(CASE WHEN service_id IS NOT NULL THEN quantity ELSE 0 END) as servicios, SUM(total) as monto')
+                        ->whereNotNull('personal_id')
+                        ->whereHas('sale', fn ($q) => $q->where('status', 'completada')->whereBetween('sale_date', [$from, $to]))
+                        ->groupBy('personal_id')->orderByDesc('monto')->with('specialist')->limit(15)->get()
+                        ->map(fn ($r) => [$r->specialist?->full_name ?? 'N/D', rtrim(rtrim(number_format($r->servicios, 2), '0'), '.'), $money($r->monto)])->all(),
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Ganancias (estado de resultados simple): ventas netas − costo de los
+     * productos vendidos − comisiones − gastos operativos.
+     * Gastos operativos = egresos de caja sin propinas (son del profesional),
+     * pagos de comisiones (ya cuentan al generarse), pagos a proveedores (el
+     * costo entra como costo de lo vendido) ni devoluciones/anulaciones (ya
+     * restan de las ventas).
+     */
+    protected function ganancias(Carbon $from, Carbon $to): array
+    {
+        $money = fn ($n) => number_format((float) $n, 2);
+        $sales = (float) Sale::where('status', 'completada')->whereBetween('sale_date', [$from, $to])->sum('total');
+        $returns = (float) \App\Models\SaleReturn::whereBetween('return_date', [$from, $to])->sum('total');
+        $net = $sales - $returns;
+
+        // Costo de lo vendido: productos (sueltos o en combos), neto de devoluciones, al costo actual.
+        $productLines = SaleItem::selectRaw('product_id, SUM(quantity - returned_quantity) as cant, SUM(CASE WHEN quantity > 0 THEN total * (quantity - returned_quantity) / quantity ELSE 0 END) as ingreso')
+            ->whereNotNull('product_id')
+            ->whereHas('sale', fn ($q) => $q->where('status', 'completada')->whereBetween('sale_date', [$from, $to]))
+            ->groupBy('product_id')->with('product')->get();
+        $cogs = (float) $productLines->sum(fn ($l) => (float) $l->cant * (float) ($l->product?->cost ?? 0));
+
+        $commissions = (float) \App\Models\Commission::whereBetween('accrued_at', [$from, $to])->sum('amount');
+
+        $excluded = ['Propinas', 'Comisiones', 'Pago a proveedores', 'Devoluciones'];
+        $expenses = CashMovement::where('type', 'egreso')->whereBetween('movement_date', [$from->toDateString(), $to->toDateString()])
+            ->where(fn ($q) => $q->whereNull('category')->orWhereNotIn('category', $excluded))
+            ->where('concept', 'not like', 'Anulación%');
+        $expenseTotal = (float) (clone $expenses)->sum('amount');
+
+        $gross = $net - $cogs;
+        $profit = $gross - $commissions - $expenseTotal;
+        $margin = $net > 0 ? $profit * 100 / $net : 0;
+
+        return [
+            'kpis' => [
+                ['label' => 'Ventas netas', 'value' => $money($net), 'icon' => 'bi-cash-coin', 'color' => '#14b8a6'],
+                ['label' => 'Utilidad bruta', 'value' => $money($gross), 'icon' => 'bi-bar-chart', 'color' => '#6366f1'],
+                ['label' => 'Ganancia neta', 'value' => $money($profit), 'icon' => 'bi-piggy-bank', 'color' => $profit >= 0 ? '#10b981' : '#ef4444'],
+                ['label' => 'Margen neto', 'value' => number_format($margin, 1) . ' %', 'icon' => 'bi-percent', 'color' => $margin >= 0 ? '#0ea5e9' : '#ef4444'],
+            ],
+            'tables' => [
+                [
+                    'title' => 'Estado de resultados',
+                    'head' => ['Concepto', 'Monto'],
+                    'rows' => [
+                        ['Ventas', $money($sales)],
+                        ['(−) Devoluciones', $money(-$returns)],
+                        ['Ventas netas', $money($net)],
+                        ['(−) Costo de productos vendidos', $money(-$cogs)],
+                        ['Utilidad bruta', $money($gross)],
+                        ['(−) Comisiones del personal', $money(-$commissions)],
+                        ['(−) Gastos operativos', $money(-$expenseTotal)],
+                        ['Ganancia neta', $money($profit)],
+                    ],
+                ],
+                [
+                    'title' => 'Gastos operativos por categoría',
+                    'head' => ['Categoría', 'Total'],
+                    'rows' => (clone $expenses)->selectRaw('category, SUM(amount) as monto')->groupBy('category')->orderByDesc('monto')->get()
+                        ->map(fn ($r) => [$r->category ?: 'Sin categoría', $money($r->monto)])->all(),
+                ],
+                [
+                    'title' => 'Margen por producto',
+                    'head' => ['Producto', 'Vendidos', 'Ingreso', 'Costo', 'Margen'],
+                    'rows' => $productLines->sortByDesc(fn ($l) => (float) $l->ingreso - (float) $l->cant * (float) ($l->product?->cost ?? 0))->take(15)
+                        ->map(fn ($l) => [
+                            $l->product?->name ?? 'N/D',
+                            rtrim(rtrim(number_format($l->cant, 2), '0'), '.'),
+                            $money($l->ingreso),
+                            $money((float) $l->cant * (float) ($l->product?->cost ?? 0)),
+                            $money((float) $l->ingreso - (float) $l->cant * (float) ($l->product?->cost ?? 0)),
+                        ])->values()->all(),
+                ],
+            ],
+            'note' => 'El costo de productos usa el costo actual de cada producto. Los gastos operativos no incluyen propinas, pagos de comisiones, pagos a proveedores ni devoluciones.',
+        ];
     }
 
     protected function ventas(Carbon $from, Carbon $to): array

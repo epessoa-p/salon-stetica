@@ -27,6 +27,11 @@ class ReportsController extends ApiController
             return $this->forbidden('El plan del salón o tus permisos no incluyen ningún reporte.');
         }
 
+        // Menú de reportes de la app: solo qué hay disponible, sin calcular nada.
+        if ($request->boolean('meta')) {
+            return response()->json(['available' => collect($available)->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values()]);
+        }
+
         $data = $request->validate([
             'type' => ['nullable', 'string'],
             'from' => ['nullable', 'date'],

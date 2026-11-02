@@ -63,6 +63,10 @@
             @endforeach
         </div>
 
+        @if(!empty($report['note']))
+            <p class="small text-muted mb-3"><i class="bi bi-info-circle"></i> {{ $report['note'] }}</p>
+        @endif
+
         {{-- Tablas --}}
         <div class="row g-3">
             @foreach($report['tables'] ?? [] as $table)
