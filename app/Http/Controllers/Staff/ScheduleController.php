@@ -5,14 +5,11 @@ namespace App\Http\Controllers\Staff;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
 use App\Models\Personal;
-use App\Models\StaffSchedule;
 use App\Models\StaffScheduleException;
 use App\Services\ScheduleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 
 /** Horario semanal y excepciones (libres, vacaciones, horarios especiales) del personal. */
 class ScheduleController extends Controller
@@ -79,45 +76,7 @@ class ScheduleController extends Controller
             'days.*.blocks.*.end'    => ['nullable', 'date_format:H:i'],
         ]);
 
-        $rows = [];
-        foreach (StaffSchedule::WEEKDAYS as $weekday => $dayName) {
-            $day = $request->input("days.$weekday", []);
-            if (empty($day['on'])) {
-                continue;
-            }
-
-            $blocks = collect($day['blocks'] ?? [])
-                ->filter(fn ($b) => !empty($b['start']) && !empty($b['end']))
-                ->sortBy('start')->values();
-
-            if ($blocks->isEmpty()) {
-                throw ValidationException::withMessages(["days.$weekday" => "{$dayName}: indica al menos un bloque de horario o desmárcalo."]);
-            }
-
-            foreach ($blocks as $i => $b) {
-                if ($b['end'] <= $b['start']) {
-                    throw ValidationException::withMessages(["days.$weekday" => "{$dayName}: la hora de salida ({$b['end']}) debe ser posterior a la de entrada ({$b['start']})."]);
-                }
-                if ($i > 0 && $b['start'] < $blocks[$i - 1]['end']) {
-                    throw ValidationException::withMessages(["days.$weekday" => "{$dayName}: los bloques {$blocks[$i - 1]['start']}–{$blocks[$i - 1]['end']} y {$b['start']}–{$b['end']} se superponen."]);
-                }
-                $rows[] = ['weekday' => $weekday, 'starts_time' => $b['start'] . ':00', 'ends_time' => $b['end'] . ':00'];
-            }
-        }
-
-        DB::transaction(function () use ($personal, $rows) {
-            // Fecha desde la que tiene horario: se conserva al editar, porque
-            // las ausencias solo se cuentan desde entonces.
-            $since = StaffSchedule::where('personal_id', $personal->id)->min('created_at');
-
-            StaffSchedule::where('personal_id', $personal->id)->delete();
-            foreach ($rows as $row) {
-                $schedule = StaffSchedule::create($row + ['company_id' => $personal->company_id, 'personal_id' => $personal->id]);
-                if ($since) {
-                    $schedule->forceFill(['created_at' => $since])->saveQuietly();
-                }
-            }
-        });
+        $rows = $this->schedules->replaceWeekly($personal, (array) $request->input('days', []));
 
         return redirect()->route('schedules.edit', $personal)->with('success', $rows
             ? 'Horario guardado. La agenda ya lo usa para avisar citas fuera de horario.'

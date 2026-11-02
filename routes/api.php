@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\MessagingController;
 use App\Http\Controllers\Api\V1\ReportsController;
 use App\Http\Controllers\Api\V1\SalesController;
 use App\Http\Controllers\Api\V1\ScheduleController;
+use App\Http\Controllers\Api\V1\SettingsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -88,6 +89,20 @@ Route::prefix('v1')->name('api.')->group(function () {
 
             // Reportes (los mismos de la web)
             Route::get('reports', [ReportsController::class, 'index'])->name('reports');
+
+            // Configuración: Mi empresa, Sucursales, Horarios y Métodos de pago
+            Route::get('company', [SettingsController::class, 'showCompany'])->name('company');
+            Route::put('company', [SettingsController::class, 'updateCompany'])->name('company.update');
+            Route::post('company/logo', [SettingsController::class, 'logo'])->name('company.logo');
+            Route::get('branches', [SettingsController::class, 'branches'])->name('branches');
+            Route::post('branches', [SettingsController::class, 'storeBranch'])->name('branches.store');
+            Route::put('branches/{branch}', [SettingsController::class, 'updateBranch'])->name('branches.update');
+            Route::get('schedules', [SettingsController::class, 'schedules'])->name('schedules');
+            Route::get('schedules/{personal}', [SettingsController::class, 'schedule'])->name('schedules.show');
+            Route::put('schedules/{personal}', [SettingsController::class, 'updateSchedule'])->name('schedules.update');
+            Route::get('payment-methods', [SettingsController::class, 'paymentMethods'])->name('payment-methods');
+            Route::post('payment-methods', [SettingsController::class, 'storePaymentMethod'])->name('payment-methods.store');
+            Route::put('payment-methods/{paymentMethod}', [SettingsController::class, 'updatePaymentMethod'])->name('payment-methods.update');
         });
     });
 });

@@ -7,14 +7,14 @@ use App\Http\Controllers\Organization\SettingController;
 use Illuminate\Support\Facades\Route;
 
 // Módulo Organización: Sucursales
-Route::prefix('admin/branches')->name('branches.')->group(function () {
+Route::prefix('admin/branches')->name('branches.')->middleware('check-permission:branches.view')->group(function () {
     Route::get('/', [BranchController::class, 'index'])->name('index');
-    Route::get('/create', [BranchController::class, 'create'])->name('create');
-    Route::post('/', [BranchController::class, 'store'])->name('store');
+    Route::get('/create', [BranchController::class, 'create'])->name('create')->middleware('check-permission:branches.create');
+    Route::post('/', [BranchController::class, 'store'])->name('store')->middleware('check-permission:branches.create');
     Route::get('/{branch}', [BranchController::class, 'show'])->name('show');
-    Route::get('/{branch}/edit', [BranchController::class, 'edit'])->name('edit');
-    Route::put('/{branch}', [BranchController::class, 'update'])->name('update');
-    Route::delete('/{branch}', [BranchController::class, 'destroy'])->name('destroy');
+    Route::get('/{branch}/edit', [BranchController::class, 'edit'])->name('edit')->middleware('check-permission:branches.edit');
+    Route::put('/{branch}', [BranchController::class, 'update'])->name('update')->middleware('check-permission:branches.edit');
+    Route::delete('/{branch}', [BranchController::class, 'destroy'])->name('destroy')->middleware('check-permission:branches.delete');
 });
 
 // Métodos de pago (catálogo configurable por empresa)

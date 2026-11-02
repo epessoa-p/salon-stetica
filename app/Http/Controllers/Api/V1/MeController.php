@@ -52,6 +52,17 @@ class MeController extends ApiController
                 'services_view'   => $company->planAllows('catalog') && $this->can('services.view'),
                 'services_create' => $company->planAllows('catalog') && $this->can('services.create'),
                 'services_edit'   => $company->planAllows('catalog') && $this->can('services.edit'),
+                // Configuración (sin módulo de plan, como en la web: solo permiso).
+                'company_view'    => $this->can('my-company.view'),
+                'company_edit'    => $this->can('my-company.edit'),
+                'branches_view'   => $this->can('branches.view'),
+                'branches_create' => $this->can('branches.create'),
+                'branches_edit'   => $this->can('branches.edit'),
+                'schedules_view'  => $this->can('schedules.view'),
+                'schedules_edit'  => $this->can('schedules.edit'),
+                'payment_methods_view'   => $this->can('payment-methods.view'),
+                'payment_methods_create' => $this->can('payment-methods.create'),
+                'payment_methods_edit'   => $this->can('payment-methods.edit'),
                 'reports'         => $this->can('reports.view') && (bool) app(\App\Http\Controllers\Reports\ReportController::class)->availableFor(auth()->user(), $company),
             ],
         ]);

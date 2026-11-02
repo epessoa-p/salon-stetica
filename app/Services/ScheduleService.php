@@ -3,10 +3,13 @@
 namespace App\Services;
 
 use App\Models\Appointment;
+use App\Models\Personal;
 use App\Models\StaffSchedule;
 use App\Models\StaffScheduleException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Horarios del personal: qué bloques trabaja cada profesional en una fecha y
@@ -23,6 +26,56 @@ class ScheduleService
 {
     /** Estados de cita que no ocupan el horario. */
     public const FREE_STATUSES = ['cancelada', 'no_show'];
+
+    /**
+     * Reemplaza el horario semanal completo. $days = [weekday => ['on' => bool,
+     * 'blocks' => [['start' => 'H:i', 'end' => 'H:i'], …]]]. Devuelve cuántos
+     * bloques quedaron (0 = sin horario: la agenda no restringe).
+     */
+    public function replaceWeekly(Personal $personal, array $days): int
+    {
+        $rows = [];
+        foreach (StaffSchedule::WEEKDAYS as $weekday => $dayName) {
+            $day = $days[$weekday] ?? [];
+            if (empty($day['on'])) {
+                continue;
+            }
+
+            $blocks = collect($day['blocks'] ?? [])
+                ->filter(fn ($b) => !empty($b['start']) && !empty($b['end']))
+                ->sortBy('start')->values();
+
+            if ($blocks->isEmpty()) {
+                throw ValidationException::withMessages(["days.$weekday" => "{$dayName}: indica al menos un bloque de horario o desmárcalo."]);
+            }
+
+            foreach ($blocks as $i => $b) {
+                if ($b['end'] <= $b['start']) {
+                    throw ValidationException::withMessages(["days.$weekday" => "{$dayName}: la hora de salida ({$b['end']}) debe ser posterior a la de entrada ({$b['start']})."]);
+                }
+                if ($i > 0 && $b['start'] < $blocks[$i - 1]['end']) {
+                    throw ValidationException::withMessages(["days.$weekday" => "{$dayName}: los bloques {$blocks[$i - 1]['start']}–{$blocks[$i - 1]['end']} y {$b['start']}–{$b['end']} se superponen."]);
+                }
+                $rows[] = ['weekday' => $weekday, 'starts_time' => $b['start'] . ':00', 'ends_time' => $b['end'] . ':00'];
+            }
+        }
+
+        DB::transaction(function () use ($personal, $rows) {
+            // Fecha desde la que tiene horario: se conserva al editar, porque
+            // las ausencias solo se cuentan desde entonces.
+            $since = StaffSchedule::where('personal_id', $personal->id)->min('created_at');
+
+            StaffSchedule::where('personal_id', $personal->id)->delete();
+            foreach ($rows as $row) {
+                $schedule = StaffSchedule::create($row + ['company_id' => $personal->company_id, 'personal_id' => $personal->id]);
+                if ($since) {
+                    $schedule->forceFill(['created_at' => $since])->saveQuietly();
+                }
+            }
+        });
+
+        return count($rows);
+    }
 
     public function hasSchedule(int $personalId): bool
     {
