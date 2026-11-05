@@ -3,15 +3,24 @@
 @section('title', 'Cargos')
 
 @section('page')
+@php
+    $authUser = auth()->user();
+    $authCompany = $authUser->getCurrentCompany();
+    $canCreate = $authUser->hasPermissionInCompany('cargos.create', $authCompany);
+    $canEdit = $authUser->hasPermissionInCompany('cargos.edit', $authCompany);
+    $canDelete = $authUser->hasPermissionInCompany('cargos.delete', $authCompany);
+@endphp
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <div>
             <h1 class="mb-1"><i class="bi bi-briefcase"></i> Cargos</h1>
             <p class="text-muted mb-0">Define cargos y vincúlalos a roles para heredar permisos.</p>
         </div>
+        @if($canCreate)
         <a href="{{ route('cargos.create') }}" class="btn btn-primary">
             <i class="bi bi-plus-circle"></i> Nuevo Cargo
         </a>
+        @endif
     </div>
 
     <div class="card border-0 shadow-sm">
@@ -44,12 +53,16 @@
                                     <span class="badge {{ $cargo->active ? 'bg-success' : 'bg-secondary' }}">{{ $cargo->active ? 'Activo' : 'Inactivo' }}</span>
                                 </td>
                                 <td class="text-end pe-3">
+                                    @if($canEdit)
                                     <a href="{{ route('cargos.edit', $cargo) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                                    @endif
+                                    @if($canDelete)
                                     <form action="{{ route('cargos.destroy', $cargo) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar cargo {{ addslashes($cargo->name) }}?')">
                                         @csrf
                                         @method('DELETE')
                                         <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                                     </form>
+                                    @endif
                                 </td>
                             </tr>
                         @empty

@@ -198,7 +198,7 @@ class ReportController extends Controller
 
         $commissions = (float) \App\Models\Commission::whereBetween('accrued_at', [$from, $to])->sum('amount');
 
-        $excluded = ['Propinas', 'Comisiones', 'Pago a proveedores', 'Devoluciones'];
+        $excluded = ['Propinas', 'Comisiones', 'Pago a proveedores', 'Devoluciones', CashMovement::CATEGORY_TRANSFER];
         $expenses = CashMovement::where('type', 'egreso')->whereBetween('movement_date', [$from->toDateString(), $to->toDateString()])
             ->where(fn ($q) => $q->whereNull('category')->orWhereNotIn('category', $excluded))
             ->where('concept', 'not like', 'Anulación%');
@@ -422,8 +422,19 @@ class ReportController extends Controller
 
     protected function caja(Carbon $from, Carbon $to, int $companyId): array
     {
-        $ingresos = (float) CashMovement::where('type', 'ingreso')->whereBetween('movement_date', [$from, $to])->sum('amount');
-        $egresos  = (float) CashMovement::where('type', 'egreso')->whereBetween('movement_date', [$from, $to])->sum('amount');
+        $ingresos = (float) CashMovement::notTransfer()->where('type', 'ingreso')->whereBetween('movement_date', [$from, $to])->sum('amount');
+        $egresos  = (float) CashMovement::notTransfer()->where('type', 'egreso')->whereBetween('movement_date', [$from, $to])->sum('amount');
+
+        // Cuentas: saldo inicial, entradas, salidas y saldo final del período.
+        $accountRows = \App\Models\FinancialAccount::forCompany($companyId)->orderBy('name')->get()->map(function ($a) use ($from, $to) {
+            $rows = $a->movements()->whereNull('voided_at')->whereDate('movement_date', '<=', $to->toDateString())->get();
+            $opening = $rows->filter(fn ($m) => $m->movement_date->lt($from->copy()->startOfDay()))->sum(fn ($m) => $m->signedAmount());
+            $period = $rows->filter(fn ($m) => !$m->movement_date->lt($from->copy()->startOfDay()));
+            $in = $period->filter(fn ($m) => $m->isIn())->sum('amount');
+            $out = $period->reject(fn ($m) => $m->isIn())->sum('amount');
+
+            return [$a->name, number_format($opening, 2), number_format($in, 2), number_format($out, 2), number_format($opening + $in - $out, 2)];
+        })->all();
 
         $arqueos = CashSession::with('register')
             ->where('status', 'closed')
@@ -441,10 +452,15 @@ class ReportController extends Controller
                 [
                     'title' => 'Por categoria',
                     'head' => ['Categoria', 'Tipo', 'Total'],
-                    'rows' => CashMovement::selectRaw('category, type, SUM(amount) as monto')
+                    'rows' => CashMovement::notTransfer()->selectRaw('category, type, SUM(amount) as monto')
                         ->whereBetween('movement_date', [$from, $to])
                         ->groupBy('category', 'type')->orderByDesc('monto')->get()
                         ->map(fn ($r) => [$r->category ?: 'Sin categoria', CashMovement::TYPES[$r->type] ?? $r->type, number_format($r->monto, 2)])->all(),
+                ],
+                [
+                    'title' => 'Cuentas',
+                    'head' => ['Cuenta', 'Saldo inicial', 'Entradas', 'Salidas', 'Saldo final'],
+                    'rows' => $accountRows,
                 ],
                 [
                     'title' => 'Arqueos cerrados',

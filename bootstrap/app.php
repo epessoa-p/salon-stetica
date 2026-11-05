@@ -14,6 +14,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // Fija la empresa activa (Tenancy) en cada petición web autenticada.
         $middleware->web(append: [
+            // Al cambiar la contraseña se cierran las demás sesiones de esa cuenta.
+            \Illuminate\Session\Middleware\AuthenticateSession::class,
             \App\Http\Middleware\SetTenant::class,
         ]);
 

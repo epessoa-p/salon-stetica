@@ -15,8 +15,13 @@ class PayablePayment extends Model
 
     protected $fillable = [
         'company_id', 'payable_id', 'receipt_number', 'amount', 'payment_method',
-        'cash_session_id', 'cash_movement_id', 'paid_at', 'notes', 'created_by',
+        'cash_session_id', 'financial_account_id', 'cash_movement_id', 'paid_at', 'notes', 'created_by',
     ];
+
+    public function account(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(FinancialAccount::class, 'financial_account_id');
+    }
 
     protected $casts = [
         'amount'     => 'decimal:2',

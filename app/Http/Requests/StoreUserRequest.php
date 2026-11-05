@@ -9,19 +9,21 @@ class StoreUserRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return auth()->user()->is_super_admin || auth()->user()->hasPermissionInCompany('users.create', auth()->user()->getCurrentCompany());
+        return auth()->user()->is_super_admin || auth()->user()->hasPermissionInCompany($this->route('user') ? 'users.edit' : 'users.create', auth()->user()->getCurrentCompany());
     }
 
     public function rules(): array
     {
-        $userId = $this->route('user')?->id;
+        $user = $this->route('user');
+        $userId = $user?->id;
 
         return [
             'name' => [
                 'required',
                 'string',
                 'max:255',
-                'regex:/^\S+$/',
+                // Los usuarios antiguos con espacios pueden editarse sin renombrarlos.
+                ...($user && $this->input('name') === $user->name ? [] : ['regex:/^\S+$/']),
                 Rule::unique('users', 'name')->ignore($userId),
             ],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($userId)],
@@ -41,6 +43,7 @@ class StoreUserRequest extends FormRequest
             'name.unique' => 'Este nombre de usuario ya está registrado',
             'password.required' => 'La contraseña es requerida',
             'password.confirmed' => 'Las contraseñas no coinciden',
+            'password.min' => 'La contraseña debe tener al menos 8 caracteres',
         ];
     }
 }

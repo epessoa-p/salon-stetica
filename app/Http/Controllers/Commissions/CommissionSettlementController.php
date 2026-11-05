@@ -71,7 +71,6 @@ class CommissionSettlementController extends Controller
             'from'            => ['required', 'date'],
             'to'              => ['required', 'date', 'after_or_equal:from'],
             'include_tips'    => ['nullable', 'boolean'],
-            'cash_session_id' => ['nullable', 'integer'],
             'notes'           => ['nullable', 'string', 'max:1000'],
         ], [
             'to.after_or_equal' => 'La fecha fin no puede ser anterior a la de inicio.',
@@ -80,14 +79,17 @@ class CommissionSettlementController extends Controller
         $personal = Personal::where('company_id', $companyId)->findOrFail($validated['personal_id']);
 
         try {
+            // Obligatorio si el salón usa caja o el usuario eligió una cuenta: lo decide settle().
+            [$sessionId, $accountId] = app(\App\Services\AccountService::class)->sourceFromRequest($request, $companyId, false);
             $settlement = $this->service->settle(
                 $personal,
                 Carbon::parse($validated['from']),
                 Carbon::parse($validated['to']),
                 $request->boolean('include_tips'),
-                $validated['cash_session_id'] ?? null,
+                $sessionId,
                 $validated['notes'] ?? null,
                 auth()->user(),
+                $accountId,
             );
         } catch (DomainException $e) {
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);

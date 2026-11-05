@@ -3,6 +3,7 @@
 use App\Http\Controllers\Finance\CajaController;
 use App\Http\Controllers\Finance\CashMovementController;
 use App\Http\Controllers\Finance\CashSessionController;
+use App\Http\Controllers\Finance\FinancialAccountController;
 use App\Http\Controllers\Finance\PayableController;
 use App\Http\Controllers\Finance\ReceivableController;
 use Illuminate\Support\Facades\Route;
@@ -44,6 +45,21 @@ Route::prefix('admin/expenses')->name('expenses.')
         Route::post('/', [CashMovementController::class, 'store'])->name('store')->middleware('check-permission:expenses.create');
         Route::delete('/{movement}', [CashMovementController::class, 'destroy'])->name('destroy')->middleware('check-permission:expenses.delete');
     });
+
+// Cuentas (caja chica, bancos) y sus movimientos
+Route::prefix('admin/accounts')->name('accounts.')->middleware('check-permission:accounts.view')->group(function () {
+    Route::get('/', [FinancialAccountController::class, 'index'])->name('index');
+    Route::get('/create', [FinancialAccountController::class, 'create'])->name('create')->middleware('check-permission:accounts.create');
+    Route::post('/', [FinancialAccountController::class, 'store'])->name('store')->middleware('check-permission:accounts.create');
+    Route::get('/{financialAccount}', [FinancialAccountController::class, 'show'])->name('show');
+    Route::get('/{financialAccount}/edit', [FinancialAccountController::class, 'edit'])->name('edit')->middleware('check-permission:accounts.edit');
+    Route::put('/{financialAccount}', [FinancialAccountController::class, 'update'])->name('update')->middleware('check-permission:accounts.edit');
+    Route::delete('/{financialAccount}', [FinancialAccountController::class, 'destroy'])->name('destroy')->middleware('check-permission:accounts.delete');
+    Route::post('/{financialAccount}/contribute', [FinancialAccountController::class, 'contribute'])->name('contribute')->middleware('check-permission:accounts.move');
+    Route::post('/{financialAccount}/transfer', [FinancialAccountController::class, 'transfer'])->name('transfer')->middleware('check-permission:accounts.move');
+    Route::post('/{financialAccount}/adjust', [FinancialAccountController::class, 'adjust'])->name('adjust')->middleware('check-permission:accounts.move');
+    Route::post('/{financialAccount}/movements/{movement}/void', [FinancialAccountController::class, 'voidMovement'])->name('movements.void')->middleware('check-permission:accounts.move');
+});
 
 // Cuentas por cobrar (ventas a crédito)
 Route::prefix('admin/receivables')->name('receivables.')->middleware('check-permission:receivables.view')->group(function () {

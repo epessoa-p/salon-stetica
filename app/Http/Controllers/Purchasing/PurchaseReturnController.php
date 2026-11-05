@@ -3,13 +3,12 @@
 namespace App\Http\Controllers\Purchasing;
 
 use App\Http\Controllers\Controller;
-use App\Models\CashMovement;
-use App\Models\CashSession;
 use App\Models\CompanySetting;
 use App\Models\PaymentMethod;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseReturn;
 use App\Models\PurchaseReturnItem;
+use App\Services\AccountService;
 use App\Services\PayableService;
 use App\Services\StockService;
 use DomainException;
@@ -72,8 +71,7 @@ class PurchaseReturnController extends Controller
             'lines'          => $lines,
             'setting'        => CompanySetting::current($companyId),
             'paymentMethods' => PaymentMethod::optionsFor($companyId),
-            'openSessions'   => CashSession::with('register')->where('status', 'open')
-                ->whereHas('register', fn ($q) => $q->where('company_id', $companyId))->get(),
+            'sources'        => app(AccountService::class)->sourceOptions($companyId),
         ]);
     }
 
@@ -175,26 +173,17 @@ class PurchaseReturnController extends Controller
 
         // El proveedor devolvió el dinero: entra como ingreso (en caja si se elige una abierta).
         if ($data['refund_method'] === 'cash' && $total > 0) {
-            $sessionId = null;
-            if (!empty($data['cash_session_id'])) {
-                $sessionId = CashSession::where('id', $data['cash_session_id'])->where('status', 'open')
-                    ->whereHas('register', fn ($q) => $q->where('company_id', $order->company_id))->value('id');
-                if (!$sessionId) {
-                    throw new DomainException('La caja elegida no está abierta.');
-                }
-            }
+            $accounts = app(AccountService::class);
+            [$sessionId, $accountId] = $accounts->sourceFromRequest(request(), (int) $order->company_id, false);
 
-            $movement = CashMovement::create([
-                'company_id'      => $order->company_id,
-                'cash_session_id' => $sessionId,
-                'type'            => 'ingreso',
-                'amount'          => $total,
-                'concept'         => 'Devolución ' . $number . ' · ' . $order->supplierDisplay(),
-                'category'        => 'Devolución de proveedor',
-                'movement_date'   => today(),
-                'payment_method'  => $data['payment_method'] ?? 'efectivo',
-                'reference'       => $number,
-                'created_by'      => auth()->id(),
+            $movement = $accounts->receive((int) $order->company_id, $sessionId, $accountId, [
+                'amount'         => $total,
+                'concept'        => 'Devolución ' . $number . ' · ' . $order->supplierDisplay(),
+                'category'       => 'Devolución de proveedor',
+                'movement_date'  => today(),
+                'payment_method' => $data['payment_method'] ?? 'efectivo',
+                'reference'      => $number,
+                'supplier_id'    => $order->supplier_id,
             ]);
             $return->update(['cash_movement_id' => $movement->id]);
         }

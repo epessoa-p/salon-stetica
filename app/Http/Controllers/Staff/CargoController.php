@@ -35,7 +35,7 @@ class CargoController extends Controller
         $authUser = auth()->user();
 
         return view('staff.cargos.create', [
-            'roles' => Role::orderBy('name')->get(),
+            'roles' => $this->assignableRoles($authUser->is_super_admin ? null : $authUser->getCurrentCompany()?->id),
             'permissions' => Permission::all()->groupBy('module'),
             'companies' => $authUser->is_super_admin
                 ? Company::orderBy('name')->get()
@@ -54,7 +54,7 @@ class CargoController extends Controller
             $validated = $request->validate([
                 'company_id' => ['nullable', 'exists:companies,id'],
                 'role_mode' => ['required', 'in:existing,new'],
-                'role_id' => ['required_if:role_mode,existing', 'nullable', 'exists:roles,id'],
+                'role_id' => ['required_if:role_mode,existing', 'nullable', Rule::exists('roles', 'id')->whereIn('id', $this->assignableRoles($companyId)->pluck('id')->all())],
                 // Al crear, el rol siempre es nuevo y toma el nombre del cargo si no se envía uno.
                 'new_role_name' => ['nullable', 'string', 'max:255'],
                 'name' => [
@@ -67,36 +67,14 @@ class CargoController extends Controller
                 'active' => ['nullable', 'boolean'],
                 'permissions' => ['nullable', 'array'],
                 'permissions.*' => ['exists:permissions,id'],
-            ]);
+            ], ['role_id.exists' => 'Ese rol no está disponible para esta empresa.']);
 
             if (!$companyId) {
                 return back()->withInput()->withErrors(['company_id' => 'Debes seleccionar una empresa.']);
             }
 
             DB::transaction(function () use ($validated, $companyId, $request) {
-                if ($validated['role_mode'] === 'new') {
-                    // Si no se envía un nombre de rol, se usa el nombre del cargo.
-                    $roleName = trim($validated['new_role_name'] ?? '') ?: trim($validated['name']);
-                    $slug = Str::of($roleName)->lower()->ascii()->replace(' ', '_')->toString();
-                    $baseSlug = $slug ?: 'role';
-                    $counter = 1;
-                    while (Role::where('slug', $slug)->exists()) {
-                        $slug = $baseSlug . '_' . $counter;
-                        $counter++;
-                    }
-
-                    $role = Role::create([
-                        'name' => $roleName,
-                        'slug' => $slug,
-                    ]);
-                } else {
-                    $role = Role::findOrFail($validated['role_id']);
-                }
-
-                // Sync permissions to the role
-                if ($request->has('permissions')) {
-                    $role->permissions()->sync($validated['permissions'] ?? []);
-                }
+                $role = $this->resolveRole($validated, $companyId, $request);
 
                 Cargo::create([
                     'company_id' => $companyId,
@@ -125,7 +103,7 @@ class CargoController extends Controller
 
         return view('staff.cargos.edit', [
             'cargo' => $cargo,
-            'roles' => Role::orderBy('name')->get(),
+            'roles' => $this->assignableRoles($cargo->company_id),
             'permissions' => Permission::all()->groupBy('module'),
             'companies' => $authUser->is_super_admin
                 ? Company::orderBy('name')->get()
@@ -146,7 +124,7 @@ class CargoController extends Controller
             $validated = $request->validate([
                 'company_id' => ['nullable', 'exists:companies,id'],
                 'role_mode' => ['required', 'in:existing,new'],
-                'role_id' => ['required_if:role_mode,existing', 'nullable', 'exists:roles,id'],
+                'role_id' => ['required_if:role_mode,existing', 'nullable', Rule::exists('roles', 'id')->whereIn('id', $this->assignableRoles($companyId)->pluck('id')->all())],
                 'new_role_name' => ['required_if:role_mode,new', 'nullable', 'string', 'max:255'],
                 'name' => [
                     'required',
@@ -160,29 +138,18 @@ class CargoController extends Controller
                 'active' => ['nullable', 'boolean'],
                 'permissions' => ['nullable', 'array'],
                 'permissions.*' => ['exists:permissions,id'],
-            ]);
+            ], ['role_id.exists' => 'Ese rol no está disponible para esta empresa.']);
 
             DB::transaction(function () use ($validated, $cargo, $companyId, $request) {
-                if ($validated['role_mode'] === 'new') {
-                    $slug = Str::of($validated['new_role_name'])->lower()->ascii()->replace(' ', '_')->toString();
-                    $baseSlug = $slug ?: 'role';
-                    $counter = 1;
-                    while (Role::where('slug', $slug)->exists()) {
-                        $slug = $baseSlug . '_' . $counter;
-                        $counter++;
-                    }
+                $previousRoleId = (int) $cargo->role_id;
+                $role = $this->resolveRole($validated, $companyId, $request);
 
-                    $role = Role::create([
-                        'name' => trim($validated['new_role_name']),
-                        'slug' => $slug,
-                    ]);
-                } else {
-                    $role = Role::findOrFail($validated['role_id']);
-                }
-
-                // Sync permissions to the role
-                if ($request->has('permissions')) {
-                    $role->permissions()->sync($validated['permissions'] ?? []);
+                // Quienes tienen este cargo pasan al rol nuevo (en esta empresa).
+                if ($role->id !== $previousRoleId) {
+                    DB::table('company_user')
+                        ->where('company_id', $companyId)
+                        ->whereIn('user_id', $cargo->personals()->whereNotNull('user_id')->pluck('user_id'))
+                        ->update(['role_id' => $role->id]);
                 }
 
                 $cargo->update([
@@ -221,7 +188,60 @@ class CargoController extends Controller
      */
     public function rolePermissions(Role $role)
     {
+        if (!auth()->user()->is_super_admin) {
+            abort_unless($this->assignableRoles(auth()->user()->getCurrentCompany()?->id)->contains('id', $role->id), 403);
+        }
+
         return response()->json($role->permissions->pluck('id'));
+    }
+
+    /**
+     * Roles generales y los de la empresa. El rol super_admin abre la
+     * administración de la plataforma: no se asigna desde una empresa.
+     */
+    protected function assignableRoles(?int $companyId)
+    {
+        return Role::availableTo($companyId)
+            ->when(!auth()->user()->is_super_admin, fn ($q) => $q->where('slug', '!=', 'super_admin'))
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * El rol que usará el cargo. Los roles generales los comparten todas las
+     * empresas: si se cambian sus permisos desde aquí, la empresa recibe una
+     * copia propia y el original no se toca. Los generales se editan en Roles.
+     */
+    protected function resolveRole(array $validated, int $companyId, Request $request): Role
+    {
+        $permissions = array_map('intval', $validated['permissions'] ?? []);
+
+        if ($validated['role_mode'] === 'new') {
+            // Si no se envía un nombre de rol, se usa el nombre del cargo.
+            $name = trim($validated['new_role_name'] ?? '') ?: trim($validated['name']);
+            $role = Role::create(['company_id' => $companyId, 'name' => $name, 'slug' => Role::uniqueSlug($name)]);
+            $role->permissions()->sync($permissions);
+
+            return $role;
+        }
+
+        $role = Role::findOrFail($validated['role_id']);
+        if (!$request->has('permissions')) {
+            return $role;
+        }
+
+        $current = $role->permissions()->pluck('permissions.id')->map(fn ($id) => (int) $id)->all();
+        if (!array_diff($permissions, $current) && !array_diff($current, $permissions)) {
+            return $role;
+        }
+
+        if ($role->company_id === null) {
+            $name = "{$role->name} (personalizado)";
+            $role = Role::create(['company_id' => $companyId, 'name' => $name, 'slug' => Role::uniqueSlug($name), 'description' => $role->description]);
+        }
+        $role->permissions()->sync($permissions);
+
+        return $role;
     }
 
     protected function authorizeCargo(Cargo $cargo): void

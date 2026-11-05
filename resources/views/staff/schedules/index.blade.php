@@ -19,7 +19,7 @@
     @elseif($people->isEmpty())
         <div class="card border-0 shadow-sm"><div class="card-body text-center text-muted py-5">
             <i class="bi bi-people" style="font-size: 2rem;"></i>
-            <p class="mt-2 mb-0">No hay personal activo. <a href="{{ route('personal.create') }}">Registra a tu equipo</a> para cargar sus horarios.</p>
+            <p class="mt-2 mb-0">No hay personal activo.@if(auth()->user()->hasPermissionInCompany('personal.create', auth()->user()->getCurrentCompany())) <a href="{{ route('personal.create') }}">Registra a tu equipo</a> para cargar sus horarios.@endif</p>
         </div></div>
     @else
         @php

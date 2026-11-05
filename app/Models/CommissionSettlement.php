@@ -20,7 +20,7 @@ class CommissionSettlement extends Model
     protected $fillable = [
         'company_id', 'personal_id', 'number', 'period_start', 'period_end',
         'commissions_count', 'commissions_total', 'tips_total', 'total', 'include_tips',
-        'paid_at', 'paid_by', 'cash_session_id', 'cash_movement_id', 'notes',
+        'paid_at', 'paid_by', 'cash_session_id', 'financial_account_id', 'cash_movement_id', 'notes',
     ];
 
     protected $casts = [

@@ -4,9 +4,13 @@ namespace App\Http\Controllers\Finance;
 
 use App\Http\Controllers\Controller;
 use App\Models\CashMovement;
-use App\Models\CashSession;
 use App\Models\PaymentMethod;
+use App\Models\Personal;
+use App\Models\Supplier;
+use App\Services\AccountService;
+use DomainException;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Ingresos y Gastos. El tipo llega desde la ruta (->defaults('type', ...)),
@@ -14,6 +18,10 @@ use Illuminate\Http\Request;
  */
 class CashMovementController extends Controller
 {
+    public function __construct(protected AccountService $accounts)
+    {
+    }
+
     public function index(Request $request)
     {
         $type = $this->type($request);
@@ -27,7 +35,10 @@ class CashMovementController extends Controller
         $to   = $request->input('to', today()->toDateString());
         $category = $request->input('category');
 
-        $query = CashMovement::with('session.register')
+        $source = $request->input('source');
+
+        $query = CashMovement::with(['session.register', 'account', 'supplierRef', 'personal'])
+            ->notTransfer()
             ->where('type', $type)
             ->whereBetween('movement_date', [$from, $to])
             ->orderByDesc('movement_date')->orderByDesc('id');
@@ -36,13 +47,17 @@ class CashMovementController extends Controller
             $query->where('category', $category);
         }
 
+        $query->when($source === 'caja', fn ($q) => $q->whereNotNull('cash_session_id'))
+            ->when($source === 'cuenta', fn ($q) => $q->whereNotNull('financial_account_id'))
+            ->when($source === 'ninguno', fn ($q) => $q->whereNull('cash_session_id')->whereNull('financial_account_id'));
+
         $total = (float) (clone $query)->sum('amount');
 
         return view('finance.movements.index', $this->viewData($type, [
             'movements' => $query->paginate(20)->withQueryString(),
             'noCompany' => false,
             'total' => $total,
-            'filters' => compact('from', 'to', 'category'),
+            'filters' => compact('from', 'to', 'category', 'source'),
         ]));
     }
 
@@ -56,10 +71,10 @@ class CashMovementController extends Controller
         }
 
         return view('finance.movements.create', $this->viewData($type, [
-            'openSessions' => CashSession::with('register')
-                ->where('status', 'open')
-                ->whereHas('register', fn ($q) => $q->where('company_id', $companyId))
-                ->get(),
+            'sources' => $this->accounts->sourceOptions($companyId),
+            'selectedAccount' => $request->integer('account') ?: null,
+            'suppliers' => $type === 'egreso' ? Supplier::where('company_id', $companyId)->orderBy('name')->get(['id', 'name']) : collect(),
+            'people' => $type === 'egreso' ? Personal::where('company_id', $companyId)->where('active', true)->orderBy('full_name')->get(['id', 'full_name']) : collect(),
         ]));
     }
 
@@ -79,34 +94,18 @@ class CashMovementController extends Controller
             'movement_date'   => ['required', 'date'],
             'payment_method'  => ['required', 'string', 'max:30', 'in:' . implode(',', array_keys(PaymentMethod::optionsFor()))],
             'reference'       => ['nullable', 'string', 'max:255'],
-            'cash_session_id' => ['nullable', 'exists:cash_sessions,id'],
+            'supplier_id'     => ['nullable', Rule::exists('suppliers', 'id')->where('company_id', $companyId)],
+            'personal_id'     => ['nullable', Rule::exists('personals', 'id')->where('company_id', $companyId)],
         ]);
 
-        // Si se elige una caja, debe estar abierta y pertenecer a la empresa.
-        $sessionId = null;
-        if (!empty($validated['cash_session_id'])) {
-            $sessionId = CashSession::where('id', $validated['cash_session_id'])
-                ->where('status', 'open')
-                ->whereHas('register', fn ($q) => $q->where('company_id', $companyId))
-                ->value('id');
-
-            if (!$sessionId) {
-                return back()->withInput()->withErrors(['cash_session_id' => 'La caja seleccionada no está abierta o no pertenece a la empresa.']);
-            }
+        // Todo gasto sale de una caja abierta o de una cuenta; un ingreso puede solo registrarse.
+        try {
+            [$sessionId, $accountId] = $this->accounts->sourceFromRequest($request, $companyId, $type === 'egreso');
+            $method = $type === 'egreso' ? 'spend' : 'receive';
+            $this->accounts->{$method}($companyId, $sessionId, $accountId, $validated);
+        } catch (DomainException $e) {
+            return back()->withInput()->withErrors(['error' => $e->getMessage()]);
         }
-
-        CashMovement::create([
-            'company_id'      => $companyId,
-            'cash_session_id' => $sessionId,
-            'type'            => $type,
-            'amount'          => $validated['amount'],
-            'concept'         => $validated['concept'],
-            'category'        => $validated['category'] ?? null,
-            'movement_date'   => $validated['movement_date'],
-            'payment_method'  => $validated['payment_method'],
-            'reference'       => $validated['reference'] ?? null,
-            'created_by'      => auth()->id(),
-        ]);
 
         $route = $type === 'ingreso' ? 'incomes.index' : 'expenses.index';
         $label = $type === 'ingreso' ? 'Ingreso registrado.' : 'Gasto registrado.';
@@ -120,13 +119,13 @@ class CashMovementController extends Controller
             abort(403);
         }
 
-        // Los movimientos generados por una venta no se borran desde aquí.
-        if ($movement->reference && str_starts_with((string) $movement->concept, 'Venta ')) {
-            return back()->withErrors(['error' => 'Este movimiento proviene de una venta; anula la venta en su lugar.']);
+        // Lo generado por una venta, pago, compra o traspaso se anula desde su origen.
+        if ($movement->isGenerated()) {
+            return back()->withErrors(['error' => 'Este movimiento proviene de otro módulo (venta, pago o compra): anúlalo desde su origen.']);
         }
 
         $type = $movement->type;
-        $movement->delete();
+        $this->accounts->voidCashMovement($movement->id);
 
         return redirect()->route($type === 'ingreso' ? 'incomes.index' : 'expenses.index')
             ->with('success', 'Movimiento eliminado.');

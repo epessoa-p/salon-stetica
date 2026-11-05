@@ -19,7 +19,7 @@ class UserController extends Controller
             $users = User::with('companies')->orderByDesc('is_super_admin')->orderBy('name')->paginate(15);
         } else {
             $company = $user->getCurrentCompany();
-            $users = $company->users()->with('companies')->orderBy('name')->paginate(15);
+            $users = $company->users()->with('companies')->where('is_super_admin', false)->orderBy('name')->paginate(15);
         }
 
         // Nombres de rol de cada vínculo usuario-empresa (pivot company_user.role_id), en una sola consulta.
@@ -30,6 +30,11 @@ class UserController extends Controller
             'users'          => $users,
             'roles'          => $roles,
             'currentCompany' => $user->is_super_admin ? null : $user->getCurrentCompany(),
+            'can'            => [
+                'create' => $this->allowed('users.create'),
+                'edit'   => $this->allowed('users.edit'),
+                'delete' => $this->allowed('users.delete'),
+            ],
         ]);
     }
 
@@ -44,10 +49,13 @@ class UserController extends Controller
 
     public function store(StoreUserRequest $request)
     {
+        $isSuperAdmin = auth()->user()->is_super_admin;
+        $links = $isSuperAdmin ? (array) $request->input('companies', []) : [];
+
         try {
             // Verifica el límite de usuarios del plan por cada empresa a vincular.
-            if ($request->has('companies') && $request->companies) {
-                foreach ($request->companies as $companyId => $roleId) {
+            if ($links) {
+                foreach ($links as $companyId => $roleId) {
                     if (!$roleId) {
                         continue;
                     }
@@ -63,11 +71,11 @@ class UserController extends Controller
                 'email' => $request->email,
                 'password' => $request->password,
                 'phone' => $request->phone,
-                'is_super_admin' => $request->boolean('is_super_admin', false),
+                'is_super_admin' => $isSuperAdmin && $request->boolean('is_super_admin', false),
             ]);
 
-            if ($request->has('companies') && $request->companies) {
-                foreach ($request->companies as $companyId => $roleId) {
+            if ($links) {
+                foreach ($links as $companyId => $roleId) {
                     if ($roleId) {
                         $user->companies()->attach($companyId, ['role_id' => $roleId]);
                     }
@@ -87,11 +95,15 @@ class UserController extends Controller
 
     public function show(User $user)
     {
+        $this->authorizeTarget($user);
+
         return view('staff.users.show', compact('user'));
     }
 
     public function edit(User $user)
     {
+        $this->authorizeTarget($user);
+
         $roles = Role::all();
         $authUser = auth()->user();
         $companies = $authUser->is_super_admin ? Company::all() : $authUser->companies()->get();
@@ -101,11 +113,14 @@ class UserController extends Controller
 
     public function update(StoreUserRequest $request, User $user)
     {
+        $this->authorizeTarget($user);
+
         try {
             $data = $request->validated();
 
             if (!auth()->user()->is_super_admin) {
-                unset($data['is_super_admin']);
+                // Contraseña y email de una cuenta existente: solo el super admin.
+                unset($data['is_super_admin'], $data['password'], $data['email']);
             }
 
             if (empty($data['password'])) {
@@ -114,7 +129,14 @@ class UserController extends Controller
 
             $user->update($data);
 
-            return redirect()->route('users.index')->with('success', 'Usuario actualizado exitosamente');
+            $passwordChanged = !empty($data['password']);
+            if ($passwordChanged) {
+                $user->revokeSessions();
+            }
+
+            return redirect()->route('users.index')->with('success', $passwordChanged
+                ? 'Usuario actualizado. La contraseña cambió y se cerraron sus sesiones abiertas.'
+                : 'Usuario actualizado exitosamente');
         } catch (\Throwable $exception) {
             Log::error('Error al actualizar usuario', [
                 'user_id' => $user->id,
@@ -127,8 +149,16 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
+        $this->authorizeTarget($user);
+
         if ($user->id === auth()->user()->id) {
             return back()->withErrors(['error' => 'No puedes eliminar tu propio usuario']);
+        }
+
+        // La cuenta es una sola: si también trabaja en otra empresa, no se borra desde esta.
+        $company = auth()->user()->getCurrentCompany();
+        if (!auth()->user()->is_super_admin && $user->companies()->whereKeyNot($company->id)->exists()) {
+            return back()->withErrors(['error' => 'Este usuario también pertenece a otra empresa: no se puede eliminar desde aquí.']);
         }
 
         $user->delete();
@@ -147,8 +177,32 @@ class UserController extends Controller
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
+        $this->authorizeTarget($user);
+        abort_if(!$authUser->is_super_admin && $role->slug === 'super_admin', 403);
+        abort_unless($role->isAvailableTo($company->id), 403);
+
         $user->companies()->syncWithoutDetaching([$company->id => ['role_id' => $role->id]]);
 
         return back()->with('success', 'Rol asignado exitosamente');
+    }
+
+    /** Fuera del super admin: solo cuentas de la empresa activa, nunca un operador. */
+    protected function authorizeTarget(User $user): void
+    {
+        $authUser = auth()->user();
+        if ($authUser->is_super_admin) {
+            return;
+        }
+
+        $company = $authUser->getCurrentCompany();
+        abort_if($user->is_super_admin || !$company || !$user->companies()->whereKey($company->id)->exists(), 403);
+    }
+
+    protected function allowed(string $permission): bool
+    {
+        $authUser = auth()->user();
+        $company = $authUser->getCurrentCompany();
+
+        return $authUser->is_super_admin || ($company && $authUser->hasPermissionInCompany($permission, $company));
     }
 }

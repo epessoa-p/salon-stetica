@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AccountsController;
 use App\Http\Controllers\Api\V1\AgendaController;
 use App\Http\Controllers\Api\V1\AttendanceController;
 use App\Http\Controllers\Api\V1\AuthController;
@@ -89,6 +90,11 @@ Route::prefix('v1')->name('api.')->group(function () {
 
             // Reportes (los mismos de la web)
             Route::get('reports', [ReportsController::class, 'index'])->name('reports');
+
+            // Cuentas y gastos
+            Route::get('accounts', [AccountsController::class, 'index'])->name('accounts');
+            Route::get('accounts/{financialAccount}', [AccountsController::class, 'show'])->name('accounts.show');
+            Route::post('expenses', [AccountsController::class, 'storeExpense'])->name('expenses.store');
 
             // Configuración: Mi empresa, Sucursales, Horarios y Métodos de pago
             Route::get('company', [SettingsController::class, 'showCompany'])->name('company');

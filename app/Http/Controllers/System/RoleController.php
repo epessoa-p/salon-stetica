@@ -15,7 +15,7 @@ class RoleController extends Controller
 
     public function index()
     {
-        $roles = Role::with('permissions')->paginate(15);
+        $roles = Role::with(['permissions', 'company'])->paginate(15);
         return view('system.roles.index', compact('roles'));
     }
 
@@ -77,7 +77,7 @@ class RoleController extends Controller
     public function destroy(Role $role)
     {
         // Prevenir eliminar roles que están en uso
-        if ($role->users()->count() > 0) {
+        if ($role->users()->count() > 0 || $role->cargos()->exists()) {
             return back()->withErrors(['error' => 'No puedes eliminar un rol que está siendo utilizado']);
         }
 

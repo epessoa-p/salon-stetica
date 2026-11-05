@@ -115,18 +115,9 @@
                             <label class="form-check-label small" for="include_tips">Incluir propinas en este pago</label>
                         </div>
 
-                        @if($usesCash)
+                        @if($usesCash || $sources['accounts']->isNotEmpty())
                             <div class="mb-2">
-                                <label class="form-label small">Sale de la caja <span class="text-danger">*</span></label>
-                                <select name="cash_session_id" class="form-select form-select-sm" required>
-                                    <option value="">Seleccionar turno abierto...</option>
-                                    @foreach($openSessions as $sess)
-                                        <option value="{{ $sess->id }}">{{ $sess->register?->name }}</option>
-                                    @endforeach
-                                </select>
-                                @if($openSessions->isEmpty())
-                                    <small class="text-danger">No hay turnos abiertos. <a href="{{ route('cash-sessions.create') }}">Abre uno</a> antes de pagar.</small>
-                                @endif
+                                @include('finance.partials.payment_source', ['sources' => $sources])
                             </div>
                         @endif
 
@@ -139,7 +130,7 @@
                             <span class="fw-bold">A pagar</span>
                             <span class="fw-bold fs-5">{{ $setting->currency_symbol }} <span id="lbl-to-pay">{{ number_format($toPay, 2) }}</span></span>
                         </div>
-                        <button class="btn btn-success w-100" @disabled($usesCash && $openSessions->isEmpty())>
+                        <button class="btn btn-success w-100" @disabled($usesCash && $sources['sessions']->isEmpty() && $sources['accounts']->isEmpty())>
                             <i class="bi bi-check2-circle"></i> Registrar pago
                         </button>
                     </form>

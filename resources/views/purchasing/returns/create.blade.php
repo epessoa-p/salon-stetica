@@ -79,11 +79,7 @@
                             <select name="payment_method" id="pr-pay" class="form-select form-select-sm mb-2">
                                 @foreach($paymentMethods as $code => $label)<option value="{{ $code }}" @selected(old('payment_method') === $code)>{{ $label }}</option>@endforeach
                             </select>
-                            <label class="form-label small mb-1" for="pr-session">Caja</label>
-                            <select name="cash_session_id" id="pr-session" class="form-select form-select-sm">
-                                <option value="">Sin caja (solo ingreso)</option>
-                                @foreach($openSessions as $s)<option value="{{ $s->id }}" @selected((string) old('cash_session_id') === (string) $s->id)>{{ $s->register?->name ?? 'Caja' }}</option>@endforeach
-                            </select>
+                            @include('finance.partials.payment_source', ['sources' => $sources, 'label' => 'Entra a', 'noneLabel' => 'Solo registrar'])
                         </div>
 
                         <label class="form-label fw-semibold mt-3 mb-1" for="pr-reason">Motivo <span class="text-danger">*</span></label>

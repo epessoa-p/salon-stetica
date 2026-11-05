@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Caja;
-use App\Models\CashMovement;
 use App\Models\CashSession;
 use App\Models\Commission;
 use App\Models\CommissionRule;
@@ -318,11 +317,12 @@ class CommissionService
         bool $includeTips,
         ?int $cashSessionId,
         ?string $notes,
-        User $payer
+        User $payer,
+        ?int $accountId = null
     ): CommissionSettlement {
         $companyId = (int) $personal->company_id;
 
-        return DB::transaction(function () use ($personal, $companyId, $from, $to, $includeTips, $cashSessionId, $notes, $payer) {
+        return DB::transaction(function () use ($personal, $companyId, $from, $to, $includeTips, $cashSessionId, $notes, $payer, $accountId) {
             // Se bloquean las filas para que dos pagos simultáneos no tomen lo mismo.
             $commissions = $this->pendingCommissions($companyId, $personal->id, $from, $to)->lockForUpdate()->get();
             $tipSales = $includeTips
@@ -344,9 +344,9 @@ class CommissionService
                 );
             }
 
-            // Si el salón usa caja, el dinero sale de un turno abierto.
+            // El dinero sale de una cuenta o, si el salón usa caja, de un turno abierto.
             $session = null;
-            if ($this->companyUsesCash($companyId)) {
+            if (!$accountId && $this->companyUsesCash($companyId)) {
                 $session = $cashSessionId
                     ? CashSession::where('id', $cashSessionId)
                         ->where('status', 'open')
@@ -355,7 +355,7 @@ class CommissionService
                     : null;
 
                 if (!$session) {
-                    throw new DomainException('Abre un turno de caja antes de liquidar: el pago sale de la caja.');
+                    throw new DomainException('Elige de dónde sale el pago: una caja abierta o una cuenta.');
                 }
             }
 
@@ -373,21 +373,20 @@ class CommissionService
                 'paid_at'           => now(),
                 'paid_by'           => $payer->id,
                 'cash_session_id'   => $session?->id,
+                'financial_account_id' => $accountId,
                 'notes'             => $notes,
             ]);
 
-            if ($session) {
-                $movement = CashMovement::create([
-                    'company_id'      => $companyId,
-                    'cash_session_id' => $session->id,
-                    'type'            => 'egreso',
-                    'amount'          => $total,
-                    'concept'         => 'Liquidación ' . $settlement->number . ' · ' . $personal->full_name,
-                    'category'        => 'Comisiones',
-                    'movement_date'   => now()->toDateString(),
-                    'payment_method'  => 'efectivo',
-                    'reference'       => $settlement->number,
-                    'created_by'      => $payer->id,
+            if ($session || $accountId) {
+                $movement = app(AccountService::class)->spend($companyId, $session?->id, $accountId, [
+                    'amount'         => $total,
+                    'concept'        => 'Liquidación ' . $settlement->number . ' · ' . $personal->full_name,
+                    'category'       => 'Comisiones',
+                    'movement_date'  => now()->toDateString(),
+                    'payment_method' => 'efectivo',
+                    'reference'      => $settlement->number,
+                    'personal_id'    => $personal->id,
+                    'created_by'     => $payer->id,
                 ]);
 
                 $settlement->update(['cash_movement_id' => $movement->id]);

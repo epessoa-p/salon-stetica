@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\CashMovement;
 use App\Models\CashSession;
 use App\Models\Payable;
 use App\Models\PayablePayment;
@@ -16,13 +15,13 @@ use Illuminate\Support\Facades\DB;
  * Reglas de Glamora:
  *  - Nace al recibir una orden de compra a crédito: monto = total de la
  *    orden, vence a los días de crédito pactados.
- *  - Cada pago (PAG-) sale como egreso "Pago a proveedores" (de la caja si se
- *    elige una abierta). Anularlo solo se puede mientras su caja siga abierta.
+ *  - Cada pago (PAG-) sale como egreso "Pago a proveedores" (de una caja abierta o de
+ *    una cuenta). Anularlo solo se puede mientras su caja siga abierta; si salió de una cuenta, le devuelve el saldo.
  *  - Una devolución al proveedor con nota de crédito descuenta de la deuda.
  */
 class PayableService
 {
-    public function __construct(protected ReceivableService $receivables)
+    public function __construct(protected ReceivableService $receivables, protected AccountService $accounts)
     {
     }
 
@@ -40,9 +39,9 @@ class PayableService
     }
 
     /** @throws DomainException */
-    public function pay(Payable $payable, float $amount, string $method, ?int $sessionId, ?string $notes = null): PayablePayment
+    public function pay(Payable $payable, float $amount, string $method, ?int $sessionId, ?string $notes = null, ?int $accountId = null): PayablePayment
     {
-        return DB::transaction(function () use ($payable, $amount, $method, $sessionId, $notes) {
+        return DB::transaction(function () use ($payable, $amount, $method, $sessionId, $notes, $accountId) {
             $payable = Payable::withoutGlobalScopes()->whereKey($payable->id)->lockForUpdate()->firstOrFail();
             $amount = round($amount, 2);
 
@@ -53,27 +52,15 @@ class PayableService
                 throw new DomainException('El pago debe ser mayor a 0 y hasta ' . number_format($payable->balance(), 2) . '.');
             }
 
-            $session = null;
-            if ($sessionId) {
-                $session = CashSession::where('id', $sessionId)->where('status', 'open')
-                    ->whereHas('register', fn ($q) => $q->where('company_id', $payable->company_id))->first();
-                if (!$session) {
-                    throw new DomainException('La caja elegida no está abierta.');
-                }
-            }
-
             $number = $this->receivables->nextNumber($payable->company_id, 'PAG-', PayablePayment::class);
-            $movement = CashMovement::create([
-                'company_id'      => $payable->company_id,
-                'cash_session_id' => $session?->id,
-                'type'            => 'egreso',
-                'amount'          => $amount,
-                'concept'         => 'Pago ' . $number . ' · ' . $payable->supplierDisplay() . ($payable->order ? ' · OC ' . $payable->order->entry_number : ''),
-                'category'        => 'Pago a proveedores',
-                'movement_date'   => today(),
-                'payment_method'  => $method,
-                'reference'       => $number,
-                'created_by'      => auth()->id(),
+            $movement = $this->accounts->spend((int) $payable->company_id, $sessionId, $accountId, [
+                'amount'         => $amount,
+                'concept'        => 'Pago ' . $number . ' · ' . $payable->supplierDisplay() . ($payable->order ? ' · OC ' . $payable->order->entry_number : ''),
+                'category'       => 'Pago a proveedores',
+                'movement_date'  => today(),
+                'payment_method' => $method,
+                'reference'      => $number,
+                'supplier_id'    => $payable->supplier_id,
             ]);
 
             $payment = PayablePayment::create([
@@ -82,7 +69,8 @@ class PayableService
                 'receipt_number'   => $number,
                 'amount'           => $amount,
                 'payment_method'   => $method,
-                'cash_session_id'  => $session?->id,
+                'cash_session_id'  => $sessionId,
+                'financial_account_id' => $accountId,
                 'cash_movement_id' => $movement->id,
                 'paid_at'          => now(),
                 'notes'            => $notes,
@@ -104,7 +92,7 @@ class PayableService
                 throw new DomainException('La caja de este pago ya se cerró: no se puede anular.');
             }
 
-            CashMovement::withoutGlobalScopes()->find($payment->cash_movement_id)?->delete();
+            $this->accounts->voidCashMovement($payment->cash_movement_id);
             $payable = Payable::withoutGlobalScopes()->lockForUpdate()->find($payment->payable_id);
             $payment->delete();
             $payable->update(['paid_amount' => max(0, round((float) $payable->paid_amount - (float) $payment->amount, 2))]);

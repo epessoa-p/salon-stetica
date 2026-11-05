@@ -58,6 +58,7 @@ class CommissionController extends Controller
             $data['pendingTotal'] = (float) $this->service->pendingCommissions($companyId, $personal->id, $from, $to)->sum('amount');
             $data['pendingTips'] = (float) $this->service->pendingTips($companyId, $personal->id, $from, $to)->sum('tip');
             $data['usesCash'] = $this->service->companyUsesCash($companyId);
+            $data['sources'] = app(\App\Services\AccountService::class)->sourceOptions($companyId);
             $data['openSessions'] = CashSession::with('register')
                 ->where('status', 'open')
                 ->whereHas('register', fn ($q) => $q->where('company_id', $companyId))

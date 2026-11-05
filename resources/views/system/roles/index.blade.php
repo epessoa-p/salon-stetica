@@ -15,6 +15,7 @@
                 <tr>
                     <th>Nombre</th>
                     <th>Slug</th>
+                    <th>Empresa</th>
                     <th>Descripción</th>
                     <th>Permisos</th>
                     <th>Acciones</th>
@@ -25,6 +26,7 @@
                     <tr>
                         <td><strong>{{ $role->name }}</strong></td>
                         <td><code>{{ $role->slug }}</code></td>
+                        <td>{{ $role->company_id ? ($role->company?->name ?? '—') : 'General (todas)' }}</td>
                         <td>{{ $role->description ?? '-' }}</td>
                         <td>{{ $role->permissions->count() }} permisos</td>
                         <td>

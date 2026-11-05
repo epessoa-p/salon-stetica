@@ -33,7 +33,7 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Categoria</label>
-                        <select name="category" class="form-select">
+                        <select name="category" id="m-category" class="form-select">
                             <option value="">Sin categoria</option>
                             @foreach($categories as $cat)
                                 <option value="{{ $cat }}" {{ old('category') === $cat ? 'selected' : '' }}>{{ $cat }}</option>
@@ -48,23 +48,30 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Registrar en caja</label>
-                        <select name="cash_session_id" class="form-select">
-                            <option value="">No afectar caja</option>
-                            @foreach($openSessions as $s)
-                                <option value="{{ $s->id }}">{{ $s->register?->name }}</option>
-                            @endforeach
+                    <div class="col-md-6 d-none" id="who-supplier">
+                        <label class="form-label">Proveedor</label>
+                        <select name="supplier_id" class="form-select">
+                            <option value="">Sin especificar</option>
+                            @foreach($suppliers as $sup)<option value="{{ $sup->id }}" @selected((string) old('supplier_id') === (string) $sup->id)>{{ $sup->name }}</option>@endforeach
                         </select>
-                        @if($openSessions->isEmpty())
-                            <small class="text-muted">No hay cajas abiertas.</small>
-                        @else
-                            <small class="text-muted">Si eliges una caja, el monto afecta su arqueo.</small>
-                        @endif
+                    </div>
+                    <div class="col-md-6 d-none" id="who-personal">
+                        <label class="form-label">Personal</label>
+                        <select name="personal_id" class="form-select">
+                            <option value="">Sin especificar</option>
+                            @foreach($people as $p)<option value="{{ $p->id }}" @selected((string) old('personal_id') === (string) $p->id)>{{ $p->full_name }}</option>@endforeach
+                        </select>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Referencia</label>
                         <input type="text" name="reference" class="form-control no-uppercase" value="{{ old('reference') }}">
+                    </div>
+                    <div class="col-12">
+                        @if($type === 'egreso')
+                            @include('finance.partials.payment_source', ['sources' => $sources, 'amountInput' => 'input[name=amount]', 'selectedAccount' => $selectedAccount])
+                        @else
+                            @include('finance.partials.payment_source', ['sources' => $sources, 'label' => 'Entra a', 'noneLabel' => 'Solo registrar', 'selectedAccount' => $selectedAccount])
+                        @endif
                     </div>
                 </div>
 
@@ -76,4 +83,16 @@
         </div>
     </div>
 </div>
+<script>
+    // Según la categoría se puede indicar a quién se pagó.
+    (function () {
+        const category = document.getElementById('m-category');
+        const toggle = () => {
+            document.getElementById('who-supplier').classList.toggle('d-none', category.value !== 'Pago a proveedores' || @json($type !== 'egreso'));
+            document.getElementById('who-personal').classList.toggle('d-none', category.value !== 'Sueldos' || @json($type !== 'egreso'));
+        };
+        category.addEventListener('change', toggle);
+        toggle();
+    })();
+</script>
 @endsection

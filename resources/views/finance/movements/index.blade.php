@@ -18,11 +18,11 @@
         <form method="GET" class="card border-0 shadow-sm mb-3">
             <div class="card-body py-3">
                 <div class="row g-2 align-items-end">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label small mb-1">Desde</label>
                         <input type="date" name="from" value="{{ $filters['from'] }}" class="form-control no-uppercase">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label small mb-1">Hasta</label>
                         <input type="date" name="to" value="{{ $filters['to'] }}" class="form-control no-uppercase">
                     </div>
@@ -33,6 +33,15 @@
                             @foreach($categories as $cat)
                                 <option value="{{ $cat }}" {{ ($filters['category'] ?? '') === $cat ? 'selected' : '' }}>{{ $cat }}</option>
                             @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Origen</label>
+                        <select name="source" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="caja" @selected(($filters['source'] ?? '') === 'caja')>Caja</option>
+                            <option value="cuenta" @selected(($filters['source'] ?? '') === 'cuenta')>Cuenta</option>
+                            <option value="ninguno" @selected(($filters['source'] ?? '') === 'ninguno')>Sin origen</option>
                         </select>
                     </div>
                     <div class="col-md-3 d-flex gap-2">
@@ -60,7 +69,7 @@
                                 <th>Concepto</th>
                                 <th>Categoria</th>
                                 <th>Metodo</th>
-                                <th>Caja</th>
+                                <th>Origen</th>
                                 <th class="text-end">Monto</th>
                                 <th class="text-end pe-3"></th>
                             </tr>
@@ -72,10 +81,19 @@
                                     <td>
                                         <div class="fw-semibold">{{ $m->concept }}</div>
                                         @if($m->reference)<small class="text-muted">Ref: {{ $m->reference }}</small>@endif
+                                        @if($m->supplierRef || $m->personal)<small class="text-muted d-block"><i class="bi bi-person"></i> {{ $m->supplierRef?->name ?? $m->personal?->full_name }}</small>@endif
                                     </td>
                                     <td>{{ $m->category ?: '-' }}</td>
                                     <td>{{ \App\Models\PaymentMethod::label($m->payment_method) }}</td>
-                                    <td>{{ $m->session?->register?->name ?? '-' }}</td>
+                                    <td>
+                                        @if($m->account)
+                                            <a href="{{ route('accounts.show', $m->account) }}" class="badge bg-primary-subtle text-primary-emphasis text-decoration-none"><i class="bi bi-wallet2"></i> {{ $m->account->name }}</a>
+                                        @elseif($m->session)
+                                            <span class="badge bg-success-subtle text-success-emphasis"><i class="bi bi-safe"></i> {{ $m->session->register?->name ?? 'Caja' }}</span>
+                                        @else
+                                            <span class="text-muted small">Sin origen</span>
+                                        @endif
+                                    </td>
                                     <td class="text-end fw-semibold text-{{ $color }}">{{ number_format($m->amount, 2) }}</td>
                                     <td class="text-end pe-3">
                                         <form action="{{ route($destroyRoute, $m) }}" method="POST" class="d-inline" onsubmit="return confirm('Eliminar este movimiento?')">

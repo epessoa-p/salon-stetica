@@ -3,11 +3,11 @@
 namespace App\Http\Controllers\Finance;
 
 use App\Http\Controllers\Controller;
-use App\Models\CashSession;
 use App\Models\CompanySetting;
 use App\Models\Payable;
 use App\Models\PayablePayment;
 use App\Models\PaymentMethod;
+use App\Services\AccountService;
 use App\Services\PayableService;
 use DomainException;
 use Illuminate\Http\Request;
@@ -61,7 +61,7 @@ class PayableController extends Controller
     public function show(Payable $payable)
     {
         $this->authorizePayable($payable);
-        $payable->load(['provider', 'order.items.product', 'payments' => fn ($q) => $q->withTrashed()->with(['creator', 'session.register'])->latest('paid_at')]);
+        $payable->load(['provider', 'order.items.product', 'payments' => fn ($q) => $q->withTrashed()->with(['creator', 'session.register', 'account'])->latest('paid_at')]);
         $companyId = $payable->company_id;
 
         return view('finance.payables.show', [
@@ -69,8 +69,7 @@ class PayableController extends Controller
             'returns'        => \App\Models\PurchaseReturn::where('purchase_order_id', $payable->purchase_order_id)->where('applied_to_payable', '>', 0)->get(),
             'setting'        => CompanySetting::current($companyId),
             'paymentMethods' => PaymentMethod::optionsFor($companyId),
-            'openSessions'   => CashSession::with('register')->where('status', 'open')
-                ->whereHas('register', fn ($q) => $q->where('company_id', $companyId))->get(),
+            'sources'        => app(AccountService::class)->sourceOptions($companyId),
         ]);
     }
 
@@ -80,12 +79,12 @@ class PayableController extends Controller
         $data = $request->validate([
             'amount'          => ['required', 'numeric', 'min:0.01'],
             'payment_method'  => ['required', Rule::in(array_keys(PaymentMethod::optionsFor($payable->company_id)))],
-            'cash_session_id' => ['nullable', 'integer'],
             'notes'           => ['nullable', 'string', 'max:255'],
         ]);
 
         try {
-            $payment = $this->payables->pay($payable, (float) $data['amount'], $data['payment_method'], $data['cash_session_id'] ?? null, $data['notes'] ?? null);
+            [$sessionId, $accountId] = app(AccountService::class)->sourceFromRequest($request, (int) $payable->company_id);
+            $payment = $this->payables->pay($payable, (float) $data['amount'], $data['payment_method'], $sessionId, $data['notes'] ?? null, $accountId);
         } catch (DomainException $e) {
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);
         }

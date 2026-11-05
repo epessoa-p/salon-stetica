@@ -127,6 +127,20 @@ class User extends Authenticatable
     /**
      * Verificar si el usuario tiene un permiso en una empresa
      */
+    /**
+     * Tras cambiar la contraseña: revoca la app y el «recordarme»; las sesiones
+     * web caen solas (AuthenticateSession). Quien cambia la suya sigue dentro.
+     */
+    public function revokeSessions(): void
+    {
+        $this->tokens()->delete();
+        $this->forceFill(['remember_token' => \Illuminate\Support\Str::random(60)])->saveQuietly();
+
+        if ($this->is(auth()->user())) {
+            auth()->setUser($this);
+        }
+    }
+
     public function hasPermissionInCompany(string $permissionSlug, ?Company $company): bool
     {
         if ($this->is_super_admin) {

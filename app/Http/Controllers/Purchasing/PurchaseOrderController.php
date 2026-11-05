@@ -3,16 +3,21 @@
 namespace App\Http\Controllers\Purchasing;
 
 use App\Http\Controllers\Controller;
+use App\Models\CashMovement;
 use App\Models\InventoryMovement;
+use App\Models\PaymentMethod;
 use App\Models\Warehouse;
+use App\Services\AccountService;
 use App\Services\BranchResolver;
 use App\Services\StockService;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use App\Services\PayableService;
+use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
 
 class PurchaseOrderController extends Controller
@@ -140,6 +145,10 @@ class PurchaseOrderController extends Controller
             'order'            => $purchaseOrder,
             'warehouses'       => Warehouse::with('branches:id,warehouse_id,name')->where('company_id', $purchaseOrder->company_id)->where('active', true)->orderBy('id')->get(),
             'defaultWarehouse' => app(StockService::class)->warehouseFor($purchaseOrder->company_id, app(BranchResolver::class)->defaultFor($purchaseOrder->company_id, auth()->id())),
+            'paysOnReceipt'    => $this->paysOnReceipt($purchaseOrder),
+            'sources'          => app(AccountService::class)->sourceOptions($purchaseOrder->company_id),
+            'paymentMethods'   => PaymentMethod::optionsFor($purchaseOrder->company_id),
+            'payment'          => $purchaseOrder->cash_movement_id ? CashMovement::withoutGlobalScopes()->with(['session.register', 'account'])->find($purchaseOrder->cash_movement_id) : null,
         ]);
     }
 
@@ -158,24 +167,54 @@ class PurchaseOrderController extends Controller
             return back()->withErrors(['error' => 'Solo se pueden recibir órdenes pendientes.']);
         }
 
-        DB::transaction(function () use ($purchaseOrder, $stock, $warehouseId) {
-            foreach ($purchaseOrder->items()->with('product')->get() as $item) {
-                $product = $item->product;
-                if (!$product) {
-                    continue;
+        // Al contado: el dinero sale al recibir, de una caja abierta o de una cuenta.
+        $sessionId = $accountId = null;
+        $method = null;
+        if ($this->paysOnReceipt($purchaseOrder)) {
+            $methods = array_keys(PaymentMethod::optionsFor($purchaseOrder->company_id));
+            $method = $request->validate(['payment_method' => ['nullable', Rule::in($methods)]])['payment_method'] ?? PaymentMethod::defaultCodeFor($purchaseOrder->company_id);
+            try {
+                [$sessionId, $accountId] = app(AccountService::class)->sourceFromRequest($request, $purchaseOrder->company_id);
+            } catch (DomainException $e) {
+                return back()->withErrors(['error' => $e->getMessage()]);
+            }
+        }
+
+        try {
+            DB::transaction(function () use ($purchaseOrder, $stock, $warehouseId, $sessionId, $accountId, $method) {
+                foreach ($purchaseOrder->items()->with('product')->get() as $item) {
+                    $product = $item->product;
+                    if (!$product) {
+                        continue;
+                    }
+
+                    $product->update(['cost' => $item->unit_cost]); // costo al último de compra
+                    $stock->move($product->id, (float) $item->quantity, 'entrada', $purchaseOrder->company_id, $purchaseOrder->entry_number, 'Recepción OC ' . $purchaseOrder->entry_number, warehouseId: $warehouseId);
                 }
 
-                $product->update(['cost' => $item->unit_cost]); // costo al último de compra
-                $stock->move($product->id, (float) $item->quantity, 'entrada', $purchaseOrder->company_id, $purchaseOrder->entry_number, 'Recepción OC ' . $purchaseOrder->entry_number, warehouseId: $warehouseId);
-            }
+                $purchaseOrder->update(['status' => 'recibida', 'warehouse_id' => $warehouseId]);
 
-            $purchaseOrder->update(['status' => 'recibida', 'warehouse_id' => $warehouseId]);
+                // A crédito: la deuda con el proveedor nace al recibir la mercadería.
+                if ($purchaseOrder->isOnCredit()) {
+                    app(PayableService::class)->createFromOrder($purchaseOrder);
+                }
 
-            // A crédito: la deuda con el proveedor nace al recibir la mercadería.
-            if ($purchaseOrder->isOnCredit()) {
-                app(PayableService::class)->createFromOrder($purchaseOrder);
-            }
-        });
+                if ($method) {
+                    $movement = app(AccountService::class)->spend($purchaseOrder->company_id, $sessionId, $accountId, [
+                        'amount'         => (float) $purchaseOrder->total,
+                        'concept'        => 'Compra ' . $purchaseOrder->entry_number . ' · ' . $purchaseOrder->supplierDisplay(),
+                        'category'       => 'Pago a proveedores',
+                        'movement_date'  => today(),
+                        'payment_method' => $method,
+                        'reference'      => $purchaseOrder->entry_number,
+                        'supplier_id'    => $purchaseOrder->supplier_id,
+                    ]);
+                    $purchaseOrder->update(['cash_movement_id' => $movement->id]);
+                }
+            });
+        } catch (DomainException $e) {
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
 
         return redirect()->route('purchase-orders.show', $purchaseOrder)->with('success', 'Orden recibida. Stock actualizado.'
             . ($purchaseOrder->isOnCredit() ? ' Quedó registrada la cuenta por pagar al proveedor.' : ''));
@@ -195,6 +234,13 @@ class PurchaseOrderController extends Controller
     }
 
     // ---- Helpers ----
+
+    /** Compra al contado con monto, en un salón que lleva caja y cuentas (plan con finanzas). */
+    protected function paysOnReceipt(PurchaseOrder $order): bool
+    {
+        return !$order->isOnCredit() && (float) $order->total > 0
+            && (auth()->user()->is_super_admin || \App\Models\Company::find($order->company_id)?->planAllows('finance'));
+    }
 
     protected function companyId(): ?int
     {

@@ -10,37 +10,37 @@ use Illuminate\Support\Facades\Route;
 // Módulo Personal y accesos: Usuarios, Cargos, Personal
 
 // Usuarios
-Route::prefix('admin/users')->name('users.')->group(function () {
+Route::prefix('admin/users')->name('users.')->middleware('check-permission:users.view')->group(function () {
     Route::get('/', [UserController::class, 'index'])->name('index');
-    Route::get('/create', [UserController::class, 'create'])->name('create');
-    Route::post('/', [UserController::class, 'store'])->name('store');
+    Route::get('/create', [UserController::class, 'create'])->name('create')->middleware('check-permission:users.create');
+    Route::post('/', [UserController::class, 'store'])->name('store')->middleware('check-permission:users.create');
     Route::get('/{user}', [UserController::class, 'show'])->name('show');
-    Route::get('/{user}/edit', [UserController::class, 'edit'])->name('edit');
-    Route::put('/{user}', [UserController::class, 'update'])->name('update');
-    Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy');
-    Route::post('/{user}/assign-role/{company}/{role}', [UserController::class, 'assignRole'])->name('assign-role');
+    Route::get('/{user}/edit', [UserController::class, 'edit'])->name('edit')->middleware('check-permission:users.edit');
+    Route::put('/{user}', [UserController::class, 'update'])->name('update')->middleware('check-permission:users.edit');
+    Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy')->middleware('check-permission:users.delete');
+    Route::post('/{user}/assign-role/{company}/{role}', [UserController::class, 'assignRole'])->name('assign-role')->middleware('check-permission:users.edit');
 });
 
 // Cargos
-Route::prefix('admin/cargos')->name('cargos.')->group(function () {
+Route::prefix('admin/cargos')->name('cargos.')->middleware('check-permission:cargos.view')->group(function () {
     Route::get('/', [CargoController::class, 'index'])->name('index');
-    Route::get('/create', [CargoController::class, 'create'])->name('create');
-    Route::post('/', [CargoController::class, 'store'])->name('store');
+    Route::get('/create', [CargoController::class, 'create'])->name('create')->middleware('check-permission:cargos.create');
+    Route::post('/', [CargoController::class, 'store'])->name('store')->middleware('check-permission:cargos.create');
     Route::get('/role-permissions/{role}', [CargoController::class, 'rolePermissions'])->name('role-permissions');
-    Route::get('/{cargo}/edit', [CargoController::class, 'edit'])->name('edit');
-    Route::put('/{cargo}', [CargoController::class, 'update'])->name('update');
-    Route::delete('/{cargo}', [CargoController::class, 'destroy'])->name('destroy');
+    Route::get('/{cargo}/edit', [CargoController::class, 'edit'])->name('edit')->middleware('check-permission:cargos.edit');
+    Route::put('/{cargo}', [CargoController::class, 'update'])->name('update')->middleware('check-permission:cargos.edit');
+    Route::delete('/{cargo}', [CargoController::class, 'destroy'])->name('destroy')->middleware('check-permission:cargos.delete');
 });
 
 // Personal
-Route::prefix('admin/personal')->name('personal.')->group(function () {
+Route::prefix('admin/personal')->name('personal.')->middleware('check-permission:personal.view')->group(function () {
     Route::get('/', [PersonalController::class, 'index'])->name('index');
-    Route::get('/create', [PersonalController::class, 'create'])->name('create');
+    Route::get('/create', [PersonalController::class, 'create'])->name('create')->middleware('check-permission:personal.create');
     Route::get('/cargos-by-company/{company}', [PersonalController::class, 'cargosByCompany'])->name('cargos-by-company');
-    Route::post('/', [PersonalController::class, 'store'])->name('store');
-    Route::get('/{personal}/edit', [PersonalController::class, 'edit'])->name('edit');
-    Route::put('/{personal}', [PersonalController::class, 'update'])->name('update');
-    Route::delete('/{personal}', [PersonalController::class, 'destroy'])->name('destroy');
+    Route::post('/', [PersonalController::class, 'store'])->name('store')->middleware('check-permission:personal.create');
+    Route::get('/{personal}/edit', [PersonalController::class, 'edit'])->name('edit')->middleware('check-permission:personal.edit');
+    Route::put('/{personal}', [PersonalController::class, 'update'])->name('update')->middleware('check-permission:personal.edit');
+    Route::delete('/{personal}', [PersonalController::class, 'destroy'])->name('destroy')->middleware('check-permission:personal.delete');
 });
 
 // Horarios del personal (semanal + excepciones)

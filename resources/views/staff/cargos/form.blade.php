@@ -92,12 +92,12 @@
                             <option value="">Seleccionar rol...</option>
                             @foreach($roles as $role)
                                 <option value="{{ $role->id }}" {{ (string) old('role_id', $cargo?->role_id) === (string) $role->id ? 'selected' : '' }}>
-                                    {{ $role->name }} ({{ $role->slug }})
+                                    {{ $role->name }} ({{ $role->slug }}){{ $role->company_id ? ' · propio de la empresa' : '' }}
                                 </option>
                             @endforeach
                         </select>
                         @error('role_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                        <small class="text-muted">Los permisos del rol serán heredados por el personal con este cargo.</small>
+                        <small class="text-muted">Los permisos del rol serán heredados por el personal con este cargo. Si cambias los permisos de un rol general, se crea una copia solo para esta empresa; las demás no cambian.</small>
                     </div>
 
                     {{-- New role --}}

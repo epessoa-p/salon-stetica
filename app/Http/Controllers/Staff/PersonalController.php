@@ -265,7 +265,13 @@ class PersonalController extends Controller
                     if (!empty($validated['password'])) {
                         $userData['password'] = Hash::make($validated['password']);
                     }
-                    $user->update($userData);
+                    // La cuenta de un operador de la plataforma no se toca desde una empresa.
+                    if (!$user->is_super_admin || auth()->user()->is_super_admin) {
+                        $user->update($userData);
+                        if ($hasUser && isset($userData['password'])) {
+                            $user->revokeSessions();
+                        }
+                    }
 
                     $user->companies()->syncWithoutDetaching([
                         $companyId => [
@@ -308,7 +314,12 @@ class PersonalController extends Controller
             $user = $personal->user;
             $personal->delete();
             if ($user) {
-                $user->delete();
+                // La cuenta es una sola: si sigue en otra empresa (o es operador), solo sale de esta.
+                if ($user->is_super_admin || $user->companies()->whereKeyNot($personal->company_id)->exists()) {
+                    $user->companies()->detach($personal->company_id);
+                } else {
+                    $user->delete();
+                }
             }
         });
 

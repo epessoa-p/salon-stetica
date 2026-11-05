@@ -15,6 +15,9 @@
         <div class="d-flex gap-2">
             <a href="{{ route('purchase-orders.index') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Volver</a>
             @if($order->status === 'pendiente')
+                @if($paysOnReceipt)
+                    <button type="button" class="btn btn-success text-nowrap" data-bs-toggle="modal" data-bs-target="#receive-modal"><i class="bi bi-box-arrow-in-down"></i> Recibir y pagar</button>
+                @else
                 <form action="{{ route('purchase-orders.receive', $order) }}" method="POST" class="d-flex gap-2" onsubmit="return confirm('¿Recibir la orden? Se sumará el stock de cada producto en el almacén elegido.')">
                     @csrf
                     @if($warehouses->count() > 1)
@@ -24,6 +27,7 @@
                     @endif
                     <button class="btn btn-success text-nowrap"><i class="bi bi-box-arrow-in-down"></i> Recibir</button>
                 </form>
+                @endif
                 <form action="{{ route('purchase-orders.void', $order) }}" method="POST" onsubmit="return confirm('¿Anular la orden?')">
                     @csrf
                     <button class="btn btn-outline-danger"><i class="bi bi-x-circle"></i> Anular</button>
@@ -88,4 +92,38 @@
 
     @if($order->notes)<div class="mt-3 text-muted"><i class="bi bi-sticky"></i> {{ $order->notes }}</div>@endif
 </div>
+@if($payment)
+    <div class="alert alert-light border small"><i class="bi bi-cash-stack"></i> Pagada al recibir desde <strong>{{ $payment->account?->name ?? ($payment->session?->register?->name ? 'caja ' . $payment->session->register->name : '—') }}</strong> · {{ \App\Models\PaymentMethod::label($payment->payment_method) }}</div>
+@endif
+@if($order->status === 'pendiente' && $paysOnReceipt)
+<div class="modal fade" id="receive-modal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ route('purchase-orders.receive', $order) }}" method="POST" class="modal-content">
+            @csrf
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-box-arrow-in-down"></i> Recibir y pagar {{ $order->entry_number }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">Compra al contado por <strong>{{ number_format($order->total, 2) }}</strong>. Se suma el stock y se registra el gasto «Pago a proveedores».</p>
+                @if($warehouses->count() > 1)
+                    <label class="form-label small mb-1">Almacén donde entra la mercadería</label>
+                    <select name="warehouse_id" class="form-select form-select-sm mb-2">
+                        @foreach($warehouses as $w)<option value="{{ $w->id }}" @selected($w->id === $defaultWarehouse)>{{ $w->label() }}</option>@endforeach
+                    </select>
+                @endif
+                <label class="form-label small mb-1">Forma de pago</label>
+                <select name="payment_method" class="form-select form-select-sm mb-2">
+                    @foreach($paymentMethods as $code => $label)<option value="{{ $code }}">{{ $label }}</option>@endforeach
+                </select>
+                @include('finance.partials.payment_source', ['sources' => $sources, 'amount' => (float) $order->total])
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-success"><i class="bi bi-check-lg"></i> Recibir y pagar</button>
+            </div>
+        </form>
+    </div>
+</div>
+@endif
 @endsection

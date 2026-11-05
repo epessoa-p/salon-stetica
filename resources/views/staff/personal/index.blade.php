@@ -3,15 +3,24 @@
 @section('title', 'Personal')
 
 @section('page')
+@php
+    $authUser = auth()->user();
+    $authCompany = $authUser->getCurrentCompany();
+    $canCreate = $authUser->hasPermissionInCompany('personal.create', $authCompany);
+    $canEdit = $authUser->hasPermissionInCompany('personal.edit', $authCompany);
+    $canDelete = $authUser->hasPermissionInCompany('personal.delete', $authCompany);
+@endphp
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <div>
             <h1 class="mb-1"><i class="bi bi-person-vcard"></i> Personal</h1>
             <p class="text-muted mb-0">Gestiona al personal y su acceso al sistema mediante cargos.</p>
         </div>
+        @if($canCreate)
         <a href="{{ route('personal.create') }}" class="btn btn-primary">
             <i class="bi bi-plus-circle"></i> Nuevo personal
         </a>
+        @endif
     </div>
 
     <div class="card border-0 shadow-sm">
@@ -48,12 +57,16 @@
                                     <span class="badge {{ $personal->active ? 'bg-success' : 'bg-secondary' }}">{{ $personal->active ? 'Activo' : 'Inactivo' }}</span>
                                 </td>
                                 <td class="text-end pe-3">
+                                    @if($canEdit)
                                     <a href="{{ route('personal.edit', $personal) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                                    @endif
+                                    @if($canDelete)
                                     <form action="{{ route('personal.destroy', $personal) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar registro de {{ addslashes($personal->full_name) }}?')">
                                         @csrf
                                         @method('DELETE')
                                         <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                                     </form>
+                                    @endif
                                 </td>
                             </tr>
                         @empty

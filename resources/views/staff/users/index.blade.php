@@ -4,9 +4,11 @@
 @php $isSuperAdmin = auth()->user()->is_super_admin; @endphp
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1><i class="bi bi-people"></i> Usuarios</h1>
+    @if($can['create'])
     <a href="{{ route('users.create') }}" class="btn btn-primary">
         <i class="bi bi-plus-circle"></i> Nuevo Usuario
     </a>
+    @endif
 </div>
 
 <div class="card">
@@ -57,10 +59,12 @@
                             </span>
                         </td>
                         <td class="text-end text-nowrap">
+                            @if($can['edit'])
                             <a href="{{ route('users.edit', $user) }}" class="btn btn-sm btn-outline-secondary">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                            @if(auth()->user()->id !== $user->id)
+                            @endif
+                            @if($can['delete'] && auth()->user()->id !== $user->id)
                                 <form action="{{ route('users.destroy', $user) }}" method="POST" style="display: inline;">
                                     @csrf
                                     @method('DELETE')

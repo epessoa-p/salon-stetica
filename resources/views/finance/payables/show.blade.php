@@ -43,7 +43,7 @@
                         <li class="list-group-item d-flex justify-content-between align-items-center {{ $pay->trashed() ? 'text-muted' : '' }}">
                             <span>
                                 <strong>{{ $pay->receipt_number }}</strong>
-                                <span class="small text-muted">· {{ $pay->paid_at->format('d/m/Y H:i') }} · {{ \App\Models\PaymentMethod::label($pay->payment_method) }}{{ $pay->session ? ' · caja ' . $pay->session->register?->name : '' }}</span>
+                                <span class="small text-muted">· {{ $pay->paid_at->format('d/m/Y H:i') }} · {{ \App\Models\PaymentMethod::label($pay->payment_method) }}{{ $pay->session ? ' · caja ' . $pay->session->register?->name : '' }}{{ $pay->account ? ' · cuenta ' . $pay->account->name : '' }}</span>
                                 @if($pay->trashed())<span class="badge bg-secondary">Anulado</span>@endif
                                 @if($pay->notes)<div class="small text-muted">{{ $pay->notes }}</div>@endif
                             </span>
@@ -89,11 +89,7 @@
                         <select name="payment_method" id="p-method" class="form-select form-select-sm mb-2">
                             @foreach($paymentMethods as $code => $label)<option value="{{ $code }}" @selected(old('payment_method') === $code)>{{ $label }}</option>@endforeach
                         </select>
-                        <label class="form-label small mb-1" for="p-session">Sale de la caja</label>
-                        <select name="cash_session_id" id="p-session" class="form-select form-select-sm mb-2">
-                            <option value="">No, solo registrar el gasto</option>
-                            @foreach($openSessions as $s)<option value="{{ $s->id }}" @selected((string) old('cash_session_id') === (string) $s->id)>{{ $s->register?->name ?? 'Caja' }}</option>@endforeach
-                        </select>
+                        @include('finance.partials.payment_source', ['sources' => $sources, 'amountInput' => '#p-amount'])
                         <label class="form-label small mb-1" for="p-notes">Nota</label>
                         <input type="text" name="notes" id="p-notes" class="form-control form-control-sm" maxlength="255" value="{{ old('notes') }}" placeholder="Ej. transferencia N.º">
                         <button class="btn btn-primary w-100 mt-3"><i class="bi bi-check-lg"></i> Registrar pago</button>

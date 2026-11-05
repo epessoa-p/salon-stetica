@@ -18,7 +18,7 @@ class PurchaseOrder extends Model
 
     protected $fillable = [
         'company_id', 'supplier_id', 'warehouse_id', 'entry_number', 'supplier',
-        'entry_date', 'notes', 'status', 'payment_type', 'credit_days', 'total', 'created_by',
+        'entry_date', 'notes', 'status', 'payment_type', 'credit_days', 'total', 'cash_movement_id', 'created_by',
     ];
 
     /** Almacén donde se recibió (de ahí sale una devolución al proveedor). */
