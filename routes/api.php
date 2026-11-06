@@ -90,6 +90,7 @@ Route::prefix('v1')->name('api.')->group(function () {
 
             // Reportes (los mismos de la web)
             Route::get('reports', [ReportsController::class, 'index'])->name('reports');
+            Route::get('reports/analysis', [ReportsController::class, 'analysis'])->name('reports.analysis');
 
             // Cuentas y gastos
             Route::get('finance/options', [AccountsController::class, 'options'])->name('finance.options');

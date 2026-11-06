@@ -157,7 +157,7 @@ class ReportController extends Controller
                 [
                     'title' => 'Horas con más ventas',
                     'head' => ['Hora', 'Ventas', 'Total'],
-                    'rows' => $base()->selectRaw('HOUR(sale_date) as h, COUNT(*) as n, SUM(total) as monto')
+                    'rows' => $base()->selectRaw('HOUR(created_at) as h, COUNT(*) as n, SUM(total) as monto')
                         ->groupBy('h')->orderByDesc('n')->limit(8)->get()
                         ->map(fn ($r) => [sprintf('%02d:00 – %02d:59', $r->h, $r->h), $r->n, $money($r->monto)])->all(),
                 ],
