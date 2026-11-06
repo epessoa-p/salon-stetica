@@ -51,6 +51,7 @@ class MeController extends ApiController
                 'cash_close'      => $company->planAllows('finance') && $this->can('cash.close'),
                 'accounts_view'   => $company->planAllows('finance') && $this->can('accounts.view'),
                 'accounts_move'   => $company->planAllows('finance') && $this->can('accounts.move'),
+                'expenses_view'   => $company->planAllows('finance') && $this->can('expenses.view'),
                 'expenses_create' => $company->planAllows('finance') && $this->can('expenses.create'),
                 'services_view'   => $company->planAllows('catalog') && $this->can('services.view'),
                 'services_create' => $company->planAllows('catalog') && $this->can('services.create'),

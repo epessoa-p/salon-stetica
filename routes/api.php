@@ -92,9 +92,19 @@ Route::prefix('v1')->name('api.')->group(function () {
             Route::get('reports', [ReportsController::class, 'index'])->name('reports');
 
             // Cuentas y gastos
+            Route::get('finance/options', [AccountsController::class, 'options'])->name('finance.options');
             Route::get('accounts', [AccountsController::class, 'index'])->name('accounts');
+            Route::post('accounts', [AccountsController::class, 'store'])->name('accounts.store');
             Route::get('accounts/{financialAccount}', [AccountsController::class, 'show'])->name('accounts.show');
+            Route::put('accounts/{financialAccount}', [AccountsController::class, 'update'])->name('accounts.update');
+            Route::delete('accounts/{financialAccount}', [AccountsController::class, 'destroy'])->name('accounts.destroy');
+            Route::post('accounts/{financialAccount}/contribute', [AccountsController::class, 'contribute'])->name('accounts.contribute');
+            Route::post('accounts/{financialAccount}/transfer', [AccountsController::class, 'transfer'])->name('accounts.transfer');
+            Route::post('accounts/{financialAccount}/adjust', [AccountsController::class, 'adjust'])->name('accounts.adjust');
+            Route::post('accounts/{financialAccount}/movements/{movement}/void', [AccountsController::class, 'voidMovement'])->name('accounts.movements.void');
+            Route::get('expenses', [AccountsController::class, 'expenses'])->name('expenses');
             Route::post('expenses', [AccountsController::class, 'storeExpense'])->name('expenses.store');
+            Route::delete('expenses/{movement}', [AccountsController::class, 'destroyExpense'])->name('expenses.destroy');
 
             // Configuración: Mi empresa, Sucursales, Horarios y Métodos de pago
             Route::get('company', [SettingsController::class, 'showCompany'])->name('company');

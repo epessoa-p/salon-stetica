@@ -10,7 +10,6 @@ use App\Services\AccountService;
 use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 
 /** Cuentas de la empresa (caja chica, bancos…) y sus movimientos. */
 class FinancialAccountController extends Controller
@@ -69,7 +68,7 @@ class FinancialAccountController extends Controller
             $account = DB::transaction(function () use ($request, $data, $companyId, $initial) {
                 $account = FinancialAccount::create($data + ['company_id' => $companyId, 'created_by' => auth()->id()]);
                 if ($initial > 0) {
-                    $this->fund($request, $account, $initial, 'Aporte inicial', today()->toDateString());
+                    $this->accounts->fundFromRequest($request, $account, $initial, 'Aporte inicial', today()->toDateString());
                 }
 
                 return $account;
@@ -160,7 +159,7 @@ class FinancialAccountController extends Controller
         $data = $this->moneyData($request);
 
         try {
-            $this->fund($request, $financialAccount, (float) $data['amount'], $data['concept'] ?: 'Aporte', $data['movement_date']);
+            $this->accounts->fundFromRequest($request, $financialAccount, (float) $data['amount'], $data['concept'] ?: 'Aporte', $data['movement_date']);
         } catch (DomainException $e) {
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);
         }
@@ -221,22 +220,6 @@ class FinancialAccountController extends Controller
 
     // ---- Helpers ----
 
-    /** Aporta a la cuenta según el origen elegido (externo si no hay caja ni cuenta). @throws DomainException */
-    protected function fund(Request $request, FinancialAccount $account, float $amount, string $concept, string $date): void
-    {
-        $companyId = (int) $account->company_id;
-        [$sessionId, $accountId] = $this->accounts->sourceFromRequest($request, $companyId, false);
-        $data = ['concept' => $concept, 'movement_date' => $date];
-
-        if ($sessionId) {
-            $this->accounts->transfer($companyId, ['caja', $sessionId], ['cuenta', $account->id], $amount, $data);
-        } elseif ($accountId) {
-            $this->accounts->transfer($companyId, ['cuenta', $accountId], ['cuenta', $account->id], $amount, $data);
-        } else {
-            $this->accounts->contribute($account, $amount, $data);
-        }
-    }
-
     protected function moneyData(Request $request): array
     {
         return $request->validate([
@@ -252,21 +235,7 @@ class FinancialAccountController extends Controller
 
     protected function validated(Request $request, int $companyId, ?int $ignoreId = null): array
     {
-        $data = $request->validate([
-            'name'           => ['required', 'string', 'max:120', Rule::unique('financial_accounts', 'name')->where('company_id', $companyId)->whereNull('deleted_at')->ignore($ignoreId)],
-            'type'           => ['required', Rule::in(array_keys(FinancialAccount::TYPES))],
-            'bank_name'      => ['nullable', 'string', 'max:120'],
-            'account_number' => ['nullable', 'string', 'max:60'],
-            'notes'          => ['nullable', 'string', 'max:255'],
-        ], ['name.required' => 'Escribe el nombre de la cuenta.', 'name.unique' => 'Ya existe una cuenta con ese nombre.']);
-
-        // Banco y número solo aplican a los bancos.
-        if ($data['type'] !== 'banco') {
-            $data['bank_name'] = null;
-            $data['account_number'] = null;
-        }
-
-        return $data;
+        return FinancialAccount::clean($request->validate(FinancialAccount::rules($companyId, $ignoreId), FinancialAccount::messages()));
     }
 
     protected function authorizeAccount(FinancialAccount $account): void

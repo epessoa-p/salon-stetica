@@ -148,6 +148,27 @@ class AccountService
     }
 
     /**
+     * Aporta a la cuenta según el origen del formulario: caja o cuenta son un
+     * traspaso; sin origen es un aporte externo.
+     *
+     * @throws DomainException
+     */
+    public function fundFromRequest(Request $request, FinancialAccount $account, float $amount, string $concept, string $date): void
+    {
+        $companyId = (int) $account->company_id;
+        [$sessionId, $accountId] = $this->sourceFromRequest($request, $companyId, false);
+        $data = ['concept' => $concept, 'movement_date' => $date];
+
+        if ($sessionId) {
+            $this->transfer($companyId, ['caja', $sessionId], ['cuenta', $account->id], $amount, $data);
+        } elseif ($accountId) {
+            $this->transfer($companyId, ['cuenta', $accountId], ['cuenta', $account->id], $amount, $data);
+        } else {
+            $this->contribute($account, $amount, $data);
+        }
+    }
+
+    /**
      * Traspaso de dinero. $from y $to: ['caja', id] o ['cuenta', id].
      *
      * @throws DomainException

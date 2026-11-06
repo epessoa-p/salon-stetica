@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Validation\Rule;
 
 /** Cuenta de la empresa (caja chica, banco…). Su saldo es la suma de sus movimientos. */
 class FinancialAccount extends Model
@@ -35,6 +36,34 @@ class FinancialAccount extends Model
         'billetera'  => 'bi-phone',
         'otra'       => 'bi-wallet2',
     ];
+
+    /** Validación de los datos de la cuenta, compartida por la web y la API. */
+    public static function rules(int $companyId, ?int $ignoreId = null): array
+    {
+        return [
+            'name'           => ['required', 'string', 'max:120', Rule::unique('financial_accounts', 'name')->where('company_id', $companyId)->whereNull('deleted_at')->ignore($ignoreId)],
+            'type'           => ['required', Rule::in(array_keys(self::TYPES))],
+            'bank_name'      => ['nullable', 'string', 'max:120'],
+            'account_number' => ['nullable', 'string', 'max:60'],
+            'notes'          => ['nullable', 'string', 'max:255'],
+        ];
+    }
+
+    public static function messages(): array
+    {
+        return ['name.required' => 'Escribe el nombre de la cuenta.', 'name.unique' => 'Ya existe una cuenta con ese nombre.'];
+    }
+
+    /** Banco y número solo aplican a los bancos. */
+    public static function clean(array $data): array
+    {
+        if ($data['type'] !== 'banco') {
+            $data['bank_name'] = null;
+            $data['account_number'] = null;
+        }
+
+        return $data;
+    }
 
     public function movements(): HasMany
     {
