@@ -24,6 +24,7 @@ class FinancialAccount extends Model
     ];
 
     public const TYPES = [
+        'capital'    => 'Capital',
         'caja_chica' => 'Caja chica',
         'banco'      => 'Banco',
         'billetera'  => 'Billetera digital',
@@ -31,6 +32,7 @@ class FinancialAccount extends Model
     ];
 
     public const ICONS = [
+        'capital'    => 'bi-safe',
         'caja_chica' => 'bi-piggy-bank',
         'banco'      => 'bi-bank',
         'billetera'  => 'bi-phone',
@@ -54,10 +56,11 @@ class FinancialAccount extends Model
         return ['name.required' => 'Escribe el nombre de la cuenta.', 'name.unique' => 'Ya existe una cuenta con ese nombre.'];
     }
 
-    /** Banco y número solo aplican a los bancos. */
+    /** Nombre en mayúsculas; el banco y el número aplican a bancos y billeteras. */
     public static function clean(array $data): array
     {
-        if ($data['type'] !== 'banco') {
+        $data['name'] = mb_strtoupper(trim($data['name']));
+        if (!in_array($data['type'], ['banco', 'billetera'], true)) {
             $data['bank_name'] = null;
             $data['account_number'] = null;
         }

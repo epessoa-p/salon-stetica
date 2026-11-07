@@ -16,14 +16,14 @@
             @csrf
             @include('finance.accounts.form')
 
-            <hr class="my-4">
-            <h6 class="fw-bold mb-1">Aporte inicial <span class="text-muted fw-normal">(opcional)</span></h6>
-            <p class="small text-muted">El dinero con el que empieza la cuenta. Queda como su primer movimiento.</p>
-            <div class="input-group mb-3" style="max-width: 240px;">
-                <span class="input-group-text">{{ $setting->currency_symbol }}</span>
-                <input type="number" name="initial_amount" id="acc-initial" class="form-control text-end no-uppercase" min="0" step="0.01" value="{{ old('initial_amount') }}" placeholder="600.00">
+            <div class="mt-3" style="max-width: 280px;">
+                <label class="form-label">Saldo inicial</label>
+                <div class="input-group">
+                    <span class="input-group-text">{{ $setting->currency_symbol }}</span>
+                    <input type="number" name="initial_amount" class="form-control text-end no-uppercase" min="0" step="0.01" value="{{ old('initial_amount') }}" placeholder="600.00">
+                </div>
+                <div class="form-text">Lo que hay hoy en la cuenta. Entra como primer movimiento.</div>
             </div>
-            @include('finance.partials.payment_source', ['sources' => $sources, 'label' => 'Viene de', 'noneLabel' => 'Externo (dueño o socio)', 'amountInput' => '#acc-initial'])
 
             <div class="mt-4 d-flex gap-2">
                 <button class="btn btn-primary px-4"><i class="bi bi-save"></i> Crear cuenta</button>

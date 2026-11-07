@@ -13,6 +13,8 @@ use App\Models\PurchaseOrder;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use Illuminate\Http\Request;
+use App\Services\FinanceReport;
+use App\Services\InventoryReport;
 use Illuminate\Support\Carbon;
 
 /**
@@ -49,7 +51,26 @@ class ReportController extends Controller
             'to' => $to->toDateString(),
         ];
 
-        if ($type) {
+        // Ganancias tiene su propia vista, la misma estructura que la app.
+        if ($type === 'ganancias') {
+            $scope = in_array($request->input('scope'), \App\Services\ProfitReport::SCOPES, true) ? $request->input('scope') : 'ambos';
+            $data['profit'] = (new \App\Services\ProfitReport($company->id, $from, $to, $scope))->build();
+            $data['setting'] = \App\Models\CompanySetting::current($company->id);
+        } elseif ($type === 'inventario') {
+            $report = new InventoryReport($company->id);
+            $warehouse = \App\Models\Warehouse::withoutGlobalScopes()->where('company_id', $company->id)->whereKey($request->integer('warehouse'))->value('id');
+            $data['inventory'] = $report->build($warehouse);
+            $data['inventoryMovements'] = $report->movements($from, $to);
+            $data['setting'] = \App\Models\CompanySetting::current($company->id);
+        } elseif ($type === 'finanzas') {
+            $tab = in_array($request->input('tab'), FinanceReport::TABS, true) ? $request->input('tab') : 'resultados';
+            $scope = in_array($request->input('scope'), FinanceReport::SCOPES, true) ? $request->input('scope') : 'caja';
+            $dir = in_array($request->input('dir'), FinanceReport::DIRECTIONS, true) ? $request->input('dir') : 'todos';
+            $data['finance'] = (new FinanceReport($company->id, $from, $to))->build($tab, $scope, $dir);
+            $data['financeFirstDate'] = FinanceReport::firstDate($company->id)->toDateString();
+            $data['company_id'] = $company->id;
+            $data['setting'] = \App\Models\CompanySetting::current($company->id);
+        } elseif ($type) {
             $data['report'] = $this->build($type, $from, $to, $company->id);
         }
 
@@ -71,6 +92,7 @@ class ReportController extends Controller
             'caja'       => $can('finance', 'cash.view') ? 'Caja' : null,
             'analisis'   => $can('sales', 'sales.view') ? 'Análisis' : null,
             'ganancias'  => $can('sales', 'sales.view') && $can('finance', 'cash.view') ? 'Ganancias' : null,
+            'finanzas'   => $can('finance', 'cash.view') && $can('finance', 'accounts.view') ? 'Finanzas' : null,
         ]);
     }
 
@@ -84,8 +106,9 @@ class ReportController extends Controller
             'inventario' => $this->inventario($from, $to),
             'compras'    => $this->compras($from, $to),
             'caja'       => $this->caja($from, $to, $companyId),
+            'ganancias'  => $this->profitTables($from, $to, $companyId),
+            'finanzas'   => $this->financeTables($from, $to, $companyId),
             'analisis'   => $this->analisis($from, $to),
-            'ganancias'  => $this->ganancias($from, $to),
             default      => [],
         };
     }
@@ -174,82 +197,51 @@ class ReportController extends Controller
         ];
     }
 
-    /**
-     * Ganancias (estado de resultados simple): ventas netas − costo de los
-     * productos vendidos − comisiones − gastos operativos.
-     * Gastos operativos = egresos de caja sin propinas (son del profesional),
-     * pagos de comisiones (ya cuentan al generarse), pagos a proveedores (el
-     * costo entra como costo de lo vendido) ni devoluciones/anulaciones (ya
-     * restan de las ventas).
-     */
-    protected function ganancias(Carbon $from, Carbon $to): array
+    /** Ganancias en indicadores y tablas, para las versiones de la app que aún piden este formato. */
+    protected function financeTables(Carbon $from, Carbon $to, int $companyId): array
     {
+        $r = (new FinanceReport($companyId, $from, $to))->build();
         $money = fn ($n) => number_format((float) $n, 2);
-        $sales = (float) Sale::where('status', 'completada')->whereBetween('sale_date', [$from, $to])->sum('total');
-        $returns = (float) \App\Models\SaleReturn::whereBetween('return_date', [$from, $to])->sum('total');
-        $net = $sales - $returns;
-
-        // Costo de lo vendido: productos (sueltos o en combos), neto de devoluciones, al costo actual.
-        $productLines = SaleItem::selectRaw('product_id, SUM(quantity - returned_quantity) as cant, SUM(CASE WHEN quantity > 0 THEN total * (quantity - returned_quantity) / quantity ELSE 0 END) as ingreso')
-            ->whereNotNull('product_id')
-            ->whereHas('sale', fn ($q) => $q->where('status', 'completada')->whereBetween('sale_date', [$from, $to]))
-            ->groupBy('product_id')->with('product')->get();
-        $cogs = (float) $productLines->sum(fn ($l) => (float) $l->cant * (float) ($l->product?->cost ?? 0));
-
-        $commissions = (float) \App\Models\Commission::whereBetween('accrued_at', [$from, $to])->sum('amount');
-
-        $excluded = ['Propinas', 'Comisiones', 'Pago a proveedores', 'Devoluciones', CashMovement::CATEGORY_TRANSFER];
-        $expenses = CashMovement::where('type', 'egreso')->whereBetween('movement_date', [$from->toDateString(), $to->toDateString()])
-            ->where(fn ($q) => $q->whereNull('category')->orWhereNotIn('category', $excluded))
-            ->where('concept', 'not like', 'Anulación%');
-        $expenseTotal = (float) (clone $expenses)->sum('amount');
-
-        $gross = $net - $cogs;
-        $profit = $gross - $commissions - $expenseTotal;
-        $margin = $net > 0 ? $profit * 100 / $net : 0;
+        $rows = fn (array $side) => array_map(fn ($row) => [$row['label'], $money($row['amount'])], $side['rows']);
 
         return [
             'kpis' => [
-                ['label' => 'Ventas netas', 'value' => $money($net), 'icon' => 'bi-cash-coin', 'color' => '#14b8a6'],
-                ['label' => 'Utilidad bruta', 'value' => $money($gross), 'icon' => 'bi-bar-chart', 'color' => '#6366f1'],
-                ['label' => 'Ganancia neta', 'value' => $money($profit), 'icon' => 'bi-piggy-bank', 'color' => $profit >= 0 ? '#10b981' : '#ef4444'],
-                ['label' => 'Margen neto', 'value' => number_format($margin, 1) . ' %', 'icon' => 'bi-percent', 'color' => $margin >= 0 ? '#0ea5e9' : '#ef4444'],
+                ['label' => 'Ingresos', 'value' => $money($r['income']['total']), 'icon' => 'bi-arrow-up-circle', 'color' => '#14b8a6'],
+                ['label' => 'Egresos', 'value' => $money($r['expense']['total']), 'icon' => 'bi-arrow-down-circle', 'color' => '#ef4444'],
+                ['label' => 'Utilidad', 'value' => $money($r['profit']), 'icon' => 'bi-piggy-bank', 'color' => '#6366f1'],
             ],
             'tables' => [
-                [
-                    'title' => 'Estado de resultados',
-                    'head' => ['Concepto', 'Monto'],
-                    'rows' => [
-                        ['Ventas', $money($sales)],
-                        ['(−) Devoluciones', $money(-$returns)],
-                        ['Ventas netas', $money($net)],
-                        ['(−) Costo de productos vendidos', $money(-$cogs)],
-                        ['Utilidad bruta', $money($gross)],
-                        ['(−) Comisiones del personal', $money(-$commissions)],
-                        ['(−) Gastos operativos', $money(-$expenseTotal)],
-                        ['Ganancia neta', $money($profit)],
-                    ],
-                ],
-                [
-                    'title' => 'Gastos operativos por categoría',
-                    'head' => ['Categoría', 'Total'],
-                    'rows' => (clone $expenses)->selectRaw('category, SUM(amount) as monto')->groupBy('category')->orderByDesc('monto')->get()
-                        ->map(fn ($r) => [$r->category ?: 'Sin categoría', $money($r->monto)])->all(),
-                ],
-                [
-                    'title' => 'Margen por producto',
-                    'head' => ['Producto', 'Vendidos', 'Ingreso', 'Costo', 'Margen'],
-                    'rows' => $productLines->sortByDesc(fn ($l) => (float) $l->ingreso - (float) $l->cant * (float) ($l->product?->cost ?? 0))->take(15)
-                        ->map(fn ($l) => [
-                            $l->product?->name ?? 'N/D',
-                            rtrim(rtrim(number_format($l->cant, 2), '0'), '.'),
-                            $money($l->ingreso),
-                            $money((float) $l->cant * (float) ($l->product?->cost ?? 0)),
-                            $money((float) $l->ingreso - (float) $l->cant * (float) ($l->product?->cost ?? 0)),
-                        ])->values()->all(),
-                ],
+                ['title' => 'Ingresos', 'head' => ['Categoría', 'Monto'], 'rows' => $rows($r['income'])],
+                ['title' => 'Egresos', 'head' => ['Categoría', 'Monto'], 'rows' => $rows($r['expense'])],
             ],
-            'note' => 'El costo de productos usa el costo actual de cada producto. Los gastos operativos no incluyen propinas, pagos de comisiones, pagos a proveedores ni devoluciones.',
+            'note' => $r['note'],
+        ];
+    }
+
+    protected function profitTables(Carbon $from, Carbon $to, int $companyId): array
+    {
+        $p = (new \App\Services\ProfitReport($companyId, $from, $to))->build();
+        $money = fn ($n) => number_format((float) $n, 2);
+
+        return [
+            'kpis' => [
+                ['label' => 'Ingresos', 'value' => $money($p['summary']['revenue']), 'icon' => 'bi-cash-coin', 'color' => '#14b8a6'],
+                ['label' => 'Ganancia', 'value' => $money($p['summary']['profit']), 'icon' => 'bi-bar-chart', 'color' => '#6366f1'],
+                ['label' => 'Ganancia neta', 'value' => $money($p['net']['profit']), 'icon' => 'bi-piggy-bank', 'color' => $p['net']['profit'] >= 0 ? '#10b981' : '#ef4444'],
+                ['label' => 'Margen', 'value' => number_format($p['summary']['margin'], 1) . ' %', 'icon' => 'bi-percent', 'color' => '#0ea5e9'],
+            ],
+            'tables' => [[
+                'title' => 'Estado de resultados',
+                'head' => ['Concepto', 'Monto'],
+                'rows' => [
+                    ['Ingresos', $money($p['summary']['revenue'])],
+                    ['(−) Costo y comisiones', $money(-$p['summary']['cost'])],
+                    ['Ganancia', $money($p['summary']['profit'])],
+                    ['(−) Gastos operativos', $money(-$p['net']['expenses'])],
+                    ['Ganancia neta', $money($p['net']['profit'])],
+                ],
+            ]],
+            'note' => $p['note'],
         ];
     }
 
@@ -422,8 +414,8 @@ class ReportController extends Controller
 
     protected function caja(Carbon $from, Carbon $to, int $companyId): array
     {
-        $ingresos = (float) CashMovement::notTransfer()->where('type', 'ingreso')->whereBetween('movement_date', [$from, $to])->sum('amount');
-        $egresos  = (float) CashMovement::notTransfer()->where('type', 'egreso')->whereBetween('movement_date', [$from, $to])->sum('amount');
+        $ingresos = (float) CashMovement::notTransfer()->live()->where('type', 'ingreso')->whereBetween('movement_date', [$from, $to])->sum('amount');
+        $egresos  = (float) CashMovement::notTransfer()->live()->where('type', 'egreso')->whereBetween('movement_date', [$from, $to])->sum('amount');
 
         // Cuentas: saldo inicial, entradas, salidas y saldo final del período.
         $accountRows = \App\Models\FinancialAccount::forCompany($companyId)->orderBy('name')->get()->map(function ($a) use ($from, $to) {
@@ -452,7 +444,7 @@ class ReportController extends Controller
                 [
                     'title' => 'Por categoria',
                     'head' => ['Categoria', 'Tipo', 'Total'],
-                    'rows' => CashMovement::notTransfer()->selectRaw('category, type, SUM(amount) as monto')
+                    'rows' => CashMovement::notTransfer()->live()->selectRaw('category, type, SUM(amount) as monto')
                         ->whereBetween('movement_date', [$from, $to])
                         ->groupBy('category', 'type')->orderByDesc('monto')->get()
                         ->map(fn ($r) => [$r->category ?: 'Sin categoria', CashMovement::TYPES[$r->type] ?? $r->type, number_format($r->monto, 2)])->all(),

@@ -5,8 +5,12 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Reports\ReportController;
 use App\Models\CompanySetting;
 use App\Services\AnalysisReport;
+use App\Services\FinanceReport;
+use App\Services\InventoryReport;
+use App\Services\ProfitReport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Carbon;
 
 /**
@@ -51,6 +55,88 @@ class ReportsController extends ApiController
             'currency'  => CompanySetting::current($company->id)->currency_symbol,
             'report'    => $web->build($type, $from, $to, $company->id),
         ]);
+    }
+
+    /** Inventario de hoy: mismas reglas y datos que la pestaña de la web. */
+    public function inventory(Request $request): JsonResponse
+    {
+        if (!$this->can('reports.view')) {
+            return $this->forbidden('No tienes permiso para ver reportes.');
+        }
+
+        $company = $this->company();
+        if (!isset(app(ReportController::class)->availableFor(auth()->user(), $company)['inventario'])) {
+            return $this->forbidden('El plan del salón o tus permisos no incluyen este reporte.');
+        }
+
+        $data = $request->validate([
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $company->id)->whereNull('deleted_at')],
+        ], ['warehouse_id.exists' => 'El almacén no pertenece a este salón.']);
+
+        return response()->json(
+            (new InventoryReport($company->id))->build(isset($data['warehouse_id']) ? (int) $data['warehouse_id'] : null)
+            + ['currency' => CompanySetting::current($company->id)->currency_symbol]
+        );
+    }
+
+    /** Finanzas: mismas reglas y datos que la pestaña de la web. */
+    public function finance(Request $request): JsonResponse
+    {
+        if (!$this->can('reports.view')) {
+            return $this->forbidden('No tienes permiso para ver reportes.');
+        }
+
+        $company = $this->company();
+        if (!isset(app(ReportController::class)->availableFor(auth()->user(), $company)['finanzas'])) {
+            return $this->forbidden('El plan del salón o tus permisos no incluyen este reporte.');
+        }
+
+        $data = $request->validate([
+            'tab'    => ['nullable', 'in:' . implode(',', FinanceReport::TABS)],
+            'scope'  => ['nullable', 'in:' . implode(',', FinanceReport::SCOPES)],
+            'dir'    => ['nullable', 'in:' . implode(',', FinanceReport::DIRECTIONS)],
+            'preset' => ['nullable', 'in:hoy,semana,semana_ant,mes,mes_ant,todo'],
+            'from'   => ['nullable', 'date'],
+            'to'     => ['nullable', 'date', 'after_or_equal:from'],
+        ], ['to.after_or_equal' => 'La fecha final debe ser igual o posterior a la inicial.']);
+
+        [$from, $to] = isset($data['from'])
+            ? [Carbon::parse($data['from']), Carbon::parse($data['to'] ?? today()->toDateString())]
+            : FinanceReport::presetRange($data['preset'] ?? 'mes', $company->id);
+
+        return response()->json(
+            (new FinanceReport($company->id, $from, $to))->build($data['tab'] ?? 'resultados', $data['scope'] ?? 'caja', $data['dir'] ?? 'todos')
+            + ['currency' => CompanySetting::current($company->id)->currency_symbol, 'all_time' => ($data['preset'] ?? null) === 'todo' && !isset($data['from'])]
+        );
+    }
+
+    /** Ganancias: mismas reglas y datos que la pestaña de la web. */
+    public function profit(Request $request): JsonResponse
+    {
+        if (!$this->can('reports.view')) {
+            return $this->forbidden('No tienes permiso para ver reportes.');
+        }
+
+        $company = $this->company();
+        if (!isset(app(ReportController::class)->availableFor(auth()->user(), $company)['ganancias'])) {
+            return $this->forbidden('El plan del salón o tus permisos no incluyen este reporte.');
+        }
+
+        $data = $request->validate([
+            'preset' => ['nullable', 'in:hoy,semana,semana_ant,mes,mes_ant'],
+            'from'   => ['nullable', 'date'],
+            'to'     => ['nullable', 'date', 'after_or_equal:from'],
+            'scope'  => ['nullable', 'in:ambos,productos,servicios'],
+        ], ['to.after_or_equal' => 'La fecha final debe ser igual o posterior a la inicial.']);
+
+        [$from, $to] = isset($data['from'])
+            ? [Carbon::parse($data['from']), Carbon::parse($data['to'] ?? today()->toDateString())]
+            : ProfitReport::presetRange($data['preset'] ?? 'mes');
+
+        return response()->json(
+            (new ProfitReport($company->id, $from, $to, $data['scope'] ?? 'ambos'))->build()
+            + ['currency' => CompanySetting::current($company->id)->currency_symbol]
+        );
     }
 
     /**

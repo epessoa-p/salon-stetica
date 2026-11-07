@@ -13,14 +13,16 @@ class CashMovement extends Model
     use BelongsToCompany, HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'company_id', 'cash_session_id', 'financial_account_id', 'type', 'amount', 'concept', 'category',
-        'movement_date', 'payment_method', 'reference', 'supplier_id', 'personal_id', 'created_by',
+        'company_id', 'branch_id', 'number', 'cash_session_id', 'financial_account_id', 'type', 'amount', 'concept', 'category',
+        'expense_category_id', 'movement_date', 'payment_method', 'reference', 'notes', 'supplier_id', 'personal_id', 'created_by',
+        'cancelled_at', 'cancelled_by', 'cancel_reason',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'movement_date' => 'date',
         'deleted_at' => 'datetime',
+        'cancelled_at' => 'datetime',
     ];
 
     /** ingreso | egreso */
@@ -31,6 +33,36 @@ class CashMovement extends Model
 
     /** Dinero que cambia de lugar dentro del negocio: no es gasto ni ingreso. */
     public const CATEGORY_TRANSFER = 'Traspaso entre cuentas';
+
+    public function expenseCategory(): BelongsTo
+    {
+        return $this->belongsTo(ExpenseCategory::class)->withTrashed();
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->cancelled_at !== null;
+    }
+
+    /** Sin los gastos anulados. */
+    public function scopeLive($query)
+    {
+        return $query->whereNull('cancelled_at');
+    }
+
+    /** Gastos de un grupo de categorías; los que no tienen categoría van con los generales. */
+    public function scopeInExpenseGroup($query, ?string $group)
+    {
+        if (!array_key_exists((string) $group, ExpenseCategory::TYPES)) {
+            return $query;
+        }
+
+        $inGroup = fn ($q) => $q->withoutGlobalScopes()->inGroup($group);
+
+        return $group === 'general'
+            ? $query->where(fn ($q) => $q->whereNull('expense_category_id')->orWhereHas('expenseCategory', $inGroup))
+            : $query->whereHas('expenseCategory', $inGroup);
+    }
 
     public function account(): BelongsTo
     {

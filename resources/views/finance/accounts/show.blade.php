@@ -35,23 +35,102 @@
 
     @if($errors->any())<div class="alert alert-danger"><ul class="mb-0 ps-3">@foreach($errors->all() as $e)<li>{{ $e }}</li>@endforeach</ul></div>@endif
 
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
-            <div>
-                <div class="text-muted small">Saldo</div>
-                <div class="fs-3 fw-bold">{{ $setting->money($balance) }}</div>
-            </div>
-            @if($account->active)
-                <div class="d-flex gap-2 flex-wrap">
-                    @if($canExpense)<a href="{{ route('expenses.create', ['account' => $account->id]) }}" class="btn btn-danger"><i class="bi bi-arrow-up-circle"></i> Gasto</a>@endif
-                    @if($canMove)
-                        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#m-contribute"><i class="bi bi-plus-circle"></i> Aporte</button>
-                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#m-transfer"><i class="bi bi-arrow-left-right"></i> Traspaso</button>
-                        <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#m-adjust"><i class="bi bi-sliders"></i> Ajuste</button>
+    <div class="row g-3 mb-3">
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase fw-bold" style="letter-spacing: 1px;">Saldo actual</div>
+                    <div class="fs-2 fw-bold">{{ $setting->money($balance) }}</div>
+                    @if($canExpense && $account->active)
+                        <a href="{{ route('expenses.create', ['account' => $account->id]) }}" class="btn btn-sm btn-outline-danger mt-2"><i class="bi bi-arrow-up-circle"></i> Registrar gasto</a>
                     @endif
                 </div>
-            @endif
+            </div>
         </div>
+        @if($canMove && $account->active)
+            <div class="col-lg-8">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <ul class="nav nav-pills mb-3 gap-1" role="tablist">
+                            <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pane-move" type="button" role="tab">Ingreso / egreso</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pane-transfer" type="button" role="tab">Transferir</button></li>
+                        </ul>
+                        <div class="tab-content">
+                            <div class="tab-pane fade show active" id="pane-move" role="tabpanel">
+                                <form action="{{ route('accounts.movement', $account) }}" method="POST">
+                                    @csrf
+                                    <div class="row g-2">
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-1">Tipo</label>
+                                            <select name="direction" id="mv-direction" class="form-select form-select-sm">
+                                                <option value="in">Ingreso</option>
+                                                <option value="out">Egreso</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-1">Importe</label>
+                                            <input type="number" name="amount" class="form-control form-control-sm text-end no-uppercase" min="0.01" step="0.01" required>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-1">Fecha</label>
+                                            <input type="date" name="movement_date" class="form-control form-control-sm no-uppercase" value="{{ now()->toDateString() }}" max="{{ now()->toDateString() }}" required>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-1">Referencia</label>
+                                            <input type="text" name="reference" class="form-control form-control-sm no-uppercase" maxlength="255">
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label small mb-1">Concepto</label>
+                                            <input type="text" name="concept" class="form-control form-control-sm" maxlength="255" required>
+                                        </div>
+                                        <div class="col-12" id="mv-source">
+                                            @include('finance.partials.payment_source', ['sources' => ['sessions' => $sources['sessions'], 'accounts' => $others, 'canUseAccounts' => $sources['canUseAccounts']], 'label' => 'Viene de', 'noneLabel' => 'Externo (dueño o socio)', 'preferNone' => true])
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-primary btn-sm mt-2">Registrar movimiento</button>
+                                </form>
+                            </div>
+                            <div class="tab-pane fade" id="pane-transfer" role="tabpanel">
+                                @if($others->isEmpty() && $sources['sessions']->isEmpty())
+                                    <p class="small text-muted mb-0">No hay otra cuenta ni caja abierta a la que transferir.</p>
+                                @else
+                                    <form action="{{ route('accounts.transfer', $account) }}" method="POST">
+                                        @csrf
+                                        <div class="row g-2">
+                                            <div class="col-md-5">
+                                                <label class="form-label small mb-1">Hacia</label>
+                                                <select name="destination" class="form-select form-select-sm" required>
+                                                    <option value="">Seleccionar...</option>
+                                                    @if($others->isNotEmpty())
+                                                        <optgroup label="Cuentas">@foreach($others as $o)<option value="cuenta:{{ $o->id }}">{{ $o->name }}</option>@endforeach</optgroup>
+                                                    @endif
+                                                    @if($sources['sessions']->isNotEmpty())
+                                                        <optgroup label="Cajas abiertas">@foreach($sources['sessions'] as $s)<option value="caja:{{ $s->id }}">{{ $s->register?->name ?? 'Caja' }}</option>@endforeach</optgroup>
+                                                    @endif
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small mb-1">Importe</label>
+                                                <input type="number" name="amount" class="form-control form-control-sm text-end no-uppercase" min="0.01" step="0.01" max="{{ $balance }}" required>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small mb-1">Fecha</label>
+                                                <input type="date" name="movement_date" class="form-control form-control-sm no-uppercase" value="{{ now()->toDateString() }}" max="{{ now()->toDateString() }}" required>
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label small mb-1">Concepto (opcional)</label>
+                                                <input type="text" name="concept" class="form-control form-control-sm" maxlength="255">
+                                            </div>
+                                        </div>
+                                        <button class="btn btn-primary btn-sm mt-2">Transferir</button>
+                                    </form>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
     </div>
 
     <form method="GET" class="card border-0 shadow-sm mb-3">
@@ -80,9 +159,10 @@
                     <thead class="table-light">
                         <tr>
                             <th class="ps-3">Fecha</th>
-                            <th>Movimiento</th>
-                            <th class="text-end">Entrada</th>
-                            <th class="text-end">Salida</th>
+                            <th>Concepto</th>
+                            <th>Origen</th>
+                            <th class="text-end">Ingreso</th>
+                            <th class="text-end">Egreso</th>
                             <th class="text-end">Saldo</th>
                             <th class="text-end pe-3"></th>
                         </tr>
@@ -93,9 +173,10 @@
                                 <td class="ps-3 text-nowrap">{{ $m->movement_date->format('d/m/Y') }}</td>
                                 <td>
                                     <div class="fw-semibold {{ $m->isVoided() ? 'text-decoration-line-through' : '' }}">{{ $m->concept }}</div>
-                                    <small class="text-muted">{{ $m->typeLabel() }}{{ $m->category && $m->type === 'gasto' ? ' · ' . $m->category : '' }}{{ $m->creator ? ' · ' . $m->creator->name : '' }}</small>
+                                    <small class="text-muted">{{ $m->reference ? 'Ref: ' . $m->reference . ' · ' : '' }}{{ $m->creator?->name }}</small>
                                     @if($m->isVoided())<span class="badge bg-secondary">Anulado {{ $m->voided_at->format('d/m/Y') }}</span>@endif
                                 </td>
+                                <td>{{ $m->typeLabel() }}</td>
                                 <td class="text-end text-success fw-semibold">{{ $m->isIn() ? number_format($m->amount, 2) : '' }}</td>
                                 <td class="text-end text-danger fw-semibold">{{ $m->isIn() ? '' : number_format($m->amount, 2) }}</td>
                                 <td class="text-end">
@@ -105,7 +186,7 @@
                                     @endunless
                                 </td>
                                 <td class="text-end pe-3">
-                                    @if($canMove && !$m->isVoided())
+                                    @if($canMove && $m->canVoidHere())
                                         <form action="{{ route('accounts.movements.void', [$account, $m]) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Anular este movimiento?')">
                                             @csrf
                                             <button class="btn btn-sm btn-outline-danger" title="Anular"><i class="bi bi-x-lg"></i></button>
@@ -114,7 +195,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="6" class="text-center py-5 text-muted">No hay movimientos.</td></tr>
+                            <tr><td colspan="7" class="text-center py-5 text-muted">No hay movimientos.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -123,79 +204,20 @@
         <div class="card-footer bg-white">{{ $movements->links() }}</div>
     </div>
 </div>
-
 @if($canMove && $account->active)
-    {{-- Aporte --}}
-    <div class="modal fade" id="m-contribute" tabindex="-1">
-        <div class="modal-dialog">
-            <form action="{{ route('accounts.contribute', $account) }}" method="POST" class="modal-content">
-                @csrf
-                <div class="modal-header"><h5 class="modal-title">Aporte a {{ $account->name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
-                <div class="modal-body">
-                    <label class="form-label small mb-1">Monto</label>
-                    <div class="input-group mb-2"><span class="input-group-text">{{ $setting->currency_symbol }}</span><input type="number" name="amount" class="form-control text-end no-uppercase" min="0.01" step="0.01" required></div>
-                    <label class="form-label small mb-1">Fecha</label>
-                    <input type="date" name="movement_date" class="form-control form-control-sm mb-2 no-uppercase" value="{{ now()->toDateString() }}" max="{{ now()->toDateString() }}" required>
-                    <label class="form-label small mb-1">Concepto</label>
-                    <input type="text" name="concept" class="form-control form-control-sm mb-3" maxlength="255" placeholder="Aporte">
-                    @include('finance.partials.payment_source', ['sources' => ['sessions' => $sources['sessions'], 'accounts' => $others, 'canUseAccounts' => $sources['canUseAccounts']], 'label' => 'Viene de', 'noneLabel' => 'Externo (dueño o socio)'])
-                </div>
-                <div class="modal-footer"><button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-success">Registrar aporte</button></div>
-            </form>
-        </div>
-    </div>
-
-    {{-- Traspaso --}}
-    <div class="modal fade" id="m-transfer" tabindex="-1">
-        <div class="modal-dialog">
-            <form action="{{ route('accounts.transfer', $account) }}" method="POST" class="modal-content">
-                @csrf
-                <div class="modal-header"><h5 class="modal-title">Traspaso desde {{ $account->name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
-                <div class="modal-body">
-                    <p class="small text-muted">El dinero cambia de lugar: no cuenta como gasto ni como ingreso.</p>
-                    <label class="form-label small mb-1">Monto (saldo: {{ number_format($balance, 2) }})</label>
-                    <div class="input-group mb-2"><span class="input-group-text">{{ $setting->currency_symbol }}</span><input type="number" name="amount" class="form-control text-end no-uppercase" min="0.01" step="0.01" max="{{ $balance }}" required></div>
-                    <label class="form-label small mb-1">Hacia</label>
-                    <select name="destination" class="form-select form-select-sm mb-2" required>
-                        <option value="">Seleccionar...</option>
-                        @if($others->isNotEmpty())
-                            <optgroup label="Cuentas">@foreach($others as $o)<option value="cuenta:{{ $o->id }}">{{ $o->name }}</option>@endforeach</optgroup>
-                        @endif
-                        @if($sources['sessions']->isNotEmpty())
-                            <optgroup label="Cajas abiertas">@foreach($sources['sessions'] as $s)<option value="caja:{{ $s->id }}">{{ $s->register?->name ?? 'Caja' }}</option>@endforeach</optgroup>
-                        @endif
-                    </select>
-                    <label class="form-label small mb-1">Fecha</label>
-                    <input type="date" name="movement_date" class="form-control form-control-sm mb-2 no-uppercase" value="{{ now()->toDateString() }}" max="{{ now()->toDateString() }}" required>
-                    <label class="form-label small mb-1">Concepto (opcional)</label>
-                    <input type="text" name="concept" class="form-control form-control-sm" maxlength="255">
-                </div>
-                <div class="modal-footer"><button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Registrar traspaso</button></div>
-            </form>
-        </div>
-    </div>
-
-    {{-- Ajuste --}}
-    <div class="modal fade" id="m-adjust" tabindex="-1">
-        <div class="modal-dialog">
-            <form action="{{ route('accounts.adjust', $account) }}" method="POST" class="modal-content">
-                @csrf
-                <div class="modal-header"><h5 class="modal-title">Ajuste de {{ $account->name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
-                <div class="modal-body">
-                    <p class="small text-muted">Para corregir una diferencia al contar el dinero o conciliar con el banco.</p>
-                    <label class="form-label small mb-1">Tipo</label>
-                    <select name="direction" class="form-select form-select-sm mb-2">
-                        <option value="in">Suma al saldo</option>
-                        <option value="out">Resta del saldo</option>
-                    </select>
-                    <label class="form-label small mb-1">Monto</label>
-                    <div class="input-group mb-2"><span class="input-group-text">{{ $setting->currency_symbol }}</span><input type="number" name="amount" class="form-control text-end no-uppercase" min="0.01" step="0.01" required></div>
-                    <label class="form-label small mb-1">Motivo <span class="text-danger">*</span></label>
-                    <input type="text" name="reason" class="form-control form-control-sm" maxlength="200" required>
-                </div>
-                <div class="modal-footer"><button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Registrar ajuste</button></div>
-            </form>
-        </div>
-    </div>
+<script>
+    // «Viene de» solo aplica a los ingresos.
+    (function () {
+        const direction = document.getElementById('mv-direction');
+        const box = document.getElementById('mv-source');
+        const sync = () => {
+            const isIn = direction.value === 'in';
+            box.classList.toggle('d-none', !isIn);
+            if (!isIn) box.querySelector('[value=ninguno]').click();
+        };
+        direction.addEventListener('change', sync);
+        sync();
+    })();
+</script>
 @endif
 @endsection

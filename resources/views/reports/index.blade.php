@@ -29,6 +29,15 @@
         {{-- Filtro de fechas --}}
         <form method="GET" class="card border-0 shadow-sm mb-3">
             <input type="hidden" name="type" value="{{ $type }}">
+            @if($type === 'ganancias')<input type="hidden" name="scope" value="{{ $profit['scope'] }}">@endif
+            @if($type === 'inventario' && !empty($inventory['warehouse_id']))
+                <input type="hidden" name="warehouse" value="{{ $inventory['warehouse_id'] }}">
+            @endif
+            @if($type === 'finanzas')
+                <input type="hidden" name="tab" value="{{ $finance['tab'] }}">
+                <input type="hidden" name="scope" value="{{ request('scope') }}">
+                <input type="hidden" name="dir" value="{{ request('dir') }}">
+            @endif
             <div class="card-body py-3">
                 <div class="row g-2 align-items-end">
                     <div class="col-md-3">
@@ -48,6 +57,13 @@
             </div>
         </form>
 
+        @if($type === 'ganancias')
+            @include('reports.partials.ganancias')
+        @elseif($type === 'finanzas')
+            @include('reports.partials.finanzas')
+        @elseif($type === 'inventario')
+            @include('reports.partials.inventario')
+        @else
         {{-- KPIs --}}
         <div class="row g-3 mb-4">
             @foreach($report['kpis'] ?? [] as $kpi)
@@ -101,6 +117,7 @@
                 </div>
             @endforeach
         </div>
+        @endif
     @endif
 </div>
 

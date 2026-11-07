@@ -25,6 +25,8 @@
             <div class="alert alert-danger"><ul class="mb-0 ps-3">@foreach($errors->all() as $e)<li>{{ $e }}</li>@endforeach</ul></div>
         @endif
 
+        @include('finance.partials.commissions_owed', ['owed' => $owed, 'setting' => $setting])
+
         {{-- Filtros --}}
         <form method="GET" class="card border-0 shadow-sm mb-3">
             <div class="card-body">

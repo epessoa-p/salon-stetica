@@ -47,6 +47,7 @@ class CommissionController extends Controller
             ],
             'specialists' => Personal::where('company_id', $companyId)->orderBy('full_name')->get(),
             'personal'    => null,
+            'owed'        => $this->service->pendingAll($companyId),
         ];
 
         if ($personalId) {

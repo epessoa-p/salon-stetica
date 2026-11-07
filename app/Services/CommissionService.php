@@ -284,6 +284,39 @@ class CommissionService
             ->whereBetween('accrued_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()]);
     }
 
+    /**
+     * Lo que se debe a cada persona, de cualquier fecha: lo pendiente no debe
+     * depender de un filtro. Ordenado por nombre.
+     */
+    public function pendingAll(int $companyId): array
+    {
+        $commissions = Commission::withoutGlobalScopes()->where('company_id', $companyId)->pending()
+            ->groupBy('personal_id')
+            ->selectRaw('personal_id, COUNT(*) as n, SUM(amount) as total, MIN(accrued_at) as since')->get()->keyBy('personal_id');
+        $tips = Sale::withoutGlobalScopes()->where('company_id', $companyId)->where('status', '!=', 'anulada')
+            ->where('tip', '>', 0)->whereNull('tip_settlement_id')->whereNotNull('personal_id')
+            ->groupBy('personal_id')
+            ->selectRaw('personal_id, SUM(tip) as total, MIN(sale_date) as since')->get()->keyBy('personal_id');
+
+        $ids = $commissions->keys()->merge($tips->keys())->unique();
+        $names = Personal::withoutGlobalScopes()->whereIn('id', $ids)->pluck('full_name', 'id');
+
+        return $ids->map(function ($id) use ($commissions, $tips, $names) {
+            $c = $commissions->get($id);
+            $t = $tips->get($id);
+            $dates = array_filter([$c?->since, $t?->since]);
+
+            return [
+                'personal_id' => (int) $id,
+                'name'        => $names[$id] ?? 'N/D',
+                'count'       => (int) ($c?->n ?? 0),
+                'total'       => round((float) ($c?->total ?? 0), 2),
+                'tips'        => round((float) ($t?->total ?? 0), 2),
+                'since'       => Carbon::parse(min($dates))->toDateString(),
+            ];
+        })->filter(fn ($row) => $row['total'] > 0 || $row['tips'] > 0)->sortBy('name')->values()->all();
+    }
+
     /** Ventas cobradas del periodo cuya propina todavía no se pagó. */
     public function pendingTips(int $companyId, int $personalId, Carbon $from, Carbon $to)
     {
@@ -382,6 +415,7 @@ class CommissionService
                     'amount'         => $total,
                     'concept'        => 'Liquidación ' . $settlement->number . ' · ' . $personal->full_name,
                     'category'       => 'Comisiones',
+                    'expense_category_id' => \App\Models\ExpenseCategory::system($companyId, \App\Models\ExpenseCategory::COMMISSIONS, 'personal')->id,
                     'movement_date'  => now()->toDateString(),
                     'payment_method' => 'efectivo',
                     'reference'      => $settlement->number,

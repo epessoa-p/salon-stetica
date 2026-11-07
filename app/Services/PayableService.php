@@ -57,6 +57,7 @@ class PayableService
                 'amount'         => $amount,
                 'concept'        => 'Pago ' . $number . ' · ' . $payable->supplierDisplay() . ($payable->order ? ' · OC ' . $payable->order->entry_number : ''),
                 'category'       => 'Pago a proveedores',
+                'expense_category_id' => \App\Models\ExpenseCategory::defaultFor((int) $payable->company_id, 'proveedor')->id,
                 'movement_date'  => today(),
                 'payment_method' => $method,
                 'reference'      => $number,

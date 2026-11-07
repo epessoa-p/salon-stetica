@@ -87,7 +87,7 @@
             ],
         ],
         [
-            'label' => 'Caja y Finanzas',
+            'label' => 'Caja',
             'icon'  => 'bi-cash-stack',
             'color' => '#10b981',
             'items' => [
@@ -99,12 +99,14 @@
             ],
         ],
         [
-            'label' => 'Gastos y cuentas',
+            'label' => 'Finanzas',
             'icon'  => 'bi-wallet2',
             'color' => '#ef4444',
             'items' => [
-                ['label' => 'Gastos',  'icon' => 'bi-arrow-up-circle', 'built' => true, 'route' => 'expenses.index', 'pattern' => 'expenses.*'],
                 ['label' => 'Cuentas', 'icon' => 'bi-bank',            'built' => true, 'route' => 'accounts.index', 'pattern' => 'accounts.*'],
+                ['label' => 'Gastos',  'icon' => 'bi-arrow-up-circle', 'built' => true, 'route' => 'expenses.index', 'pattern' => 'expenses.*'],
+                ['label' => 'Categorías de gasto', 'icon' => 'bi-tags', 'built' => true, 'route' => 'expense-categories.index', 'pattern' => 'expense-categories.*',
+                 'visible' => $u->is_super_admin || ($co && $u->hasPermissionInCompany('expense_categories.view', $co))],
             ],
         ],
         [
@@ -189,7 +191,7 @@
         // Oculta la sección si su módulo no está incluido en el plan (super admin siempre ve).
         $sectionModule = [
             'Clientes' => 'crm', 'Agenda' => 'scheduling', 'Servicios' => 'catalog', 'Ventas' => 'sales',
-            'Inventario' => 'inventory', 'Compras' => 'purchasing', 'Caja y Finanzas' => 'finance', 'Gastos y cuentas' => 'finance', 'Marketing' => 'marketing',
+            'Inventario' => 'inventory', 'Compras' => 'purchasing', 'Caja' => 'finance', 'Finanzas' => 'finance', 'Marketing' => 'marketing',
             'Comisiones' => 'commissions',
         ][$section['label']] ?? null;
         if ($sectionModule && !$u->is_super_admin && !($co && $co->planAllows($sectionModule))) continue;

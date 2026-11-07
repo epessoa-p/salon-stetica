@@ -23,12 +23,14 @@ class AccountMovement extends Model
     ];
 
     public const TYPES = [
-        'aporte'           => 'Aporte',
+        'apertura'         => 'Saldo inicial',
+        'manual'           => 'Manual',
+        'aporte'           => 'Manual',
+        'ajuste'           => 'Manual',
         'gasto'            => 'Gasto',
         'ingreso'          => 'Ingreso',
-        'traspaso_entrada' => 'Traspaso recibido',
-        'traspaso_salida'  => 'Traspaso enviado',
-        'ajuste'           => 'Ajuste',
+        'traspaso_entrada' => 'Transferencia',
+        'traspaso_salida'  => 'Transferencia',
     ];
 
     public function account(): BelongsTo
@@ -54,6 +56,12 @@ class AccountMovement extends Model
     public function typeLabel(): string
     {
         return self::TYPES[$this->type] ?? $this->type;
+    }
+
+    /** Solo lo manual y las transferencias se anulan desde la cuenta; un gasto, desde su ficha. */
+    public function canVoidHere(): bool
+    {
+        return !$this->isVoided() && !in_array($this->type, ['gasto', 'ingreso'], true);
     }
 
     public function signedAmount(): float

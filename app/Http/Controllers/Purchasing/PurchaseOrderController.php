@@ -204,6 +204,7 @@ class PurchaseOrderController extends Controller
                         'amount'         => (float) $purchaseOrder->total,
                         'concept'        => 'Compra ' . $purchaseOrder->entry_number . ' · ' . $purchaseOrder->supplierDisplay(),
                         'category'       => 'Pago a proveedores',
+                        'expense_category_id' => \App\Models\ExpenseCategory::defaultFor((int) $purchaseOrder->company_id, 'proveedor')->id,
                         'movement_date'  => today(),
                         'payment_method' => $method,
                         'reference'      => $purchaseOrder->entry_number,

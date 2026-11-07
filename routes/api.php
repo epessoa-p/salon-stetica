@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\CashController;
 use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\CommissionController;
+use App\Http\Controllers\Api\V1\ExpensesController;
 use App\Http\Controllers\Api\V1\ManagementController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\MessagingController;
@@ -91,21 +92,31 @@ Route::prefix('v1')->name('api.')->group(function () {
             // Reportes (los mismos de la web)
             Route::get('reports', [ReportsController::class, 'index'])->name('reports');
             Route::get('reports/analysis', [ReportsController::class, 'analysis'])->name('reports.analysis');
+            Route::get('reports/profit', [ReportsController::class, 'profit'])->name('reports.profit');
+            Route::get('reports/finance', [ReportsController::class, 'finance'])->name('reports.finance');
+            Route::get('reports/inventory', [ReportsController::class, 'inventory'])->name('reports.inventory');
 
             // Cuentas y gastos
-            Route::get('finance/options', [AccountsController::class, 'options'])->name('finance.options');
+            Route::get('finance/options', [ExpensesController::class, 'options'])->name('finance.options');
+            Route::get('finance/basics', [ExpensesController::class, 'basics'])->name('finance.basics');
             Route::get('accounts', [AccountsController::class, 'index'])->name('accounts');
             Route::post('accounts', [AccountsController::class, 'store'])->name('accounts.store');
             Route::get('accounts/{financialAccount}', [AccountsController::class, 'show'])->name('accounts.show');
             Route::put('accounts/{financialAccount}', [AccountsController::class, 'update'])->name('accounts.update');
             Route::delete('accounts/{financialAccount}', [AccountsController::class, 'destroy'])->name('accounts.destroy');
-            Route::post('accounts/{financialAccount}/contribute', [AccountsController::class, 'contribute'])->name('accounts.contribute');
+            Route::post('accounts/{financialAccount}/movements', [AccountsController::class, 'movement'])->name('accounts.movement');
             Route::post('accounts/{financialAccount}/transfer', [AccountsController::class, 'transfer'])->name('accounts.transfer');
-            Route::post('accounts/{financialAccount}/adjust', [AccountsController::class, 'adjust'])->name('accounts.adjust');
             Route::post('accounts/{financialAccount}/movements/{movement}/void', [AccountsController::class, 'voidMovement'])->name('accounts.movements.void');
-            Route::get('expenses', [AccountsController::class, 'expenses'])->name('expenses');
-            Route::post('expenses', [AccountsController::class, 'storeExpense'])->name('expenses.store');
-            Route::delete('expenses/{movement}', [AccountsController::class, 'destroyExpense'])->name('expenses.destroy');
+            Route::get('expenses', [ExpensesController::class, 'index'])->name('expenses');
+            Route::post('expenses', [ExpensesController::class, 'store'])->name('expenses.store');
+            Route::post('expenses/{movement}/cancel', [ExpensesController::class, 'cancel'])->name('expenses.cancel');
+            Route::get('expense-categories', [ExpensesController::class, 'categories'])->name('expense-categories');
+            Route::post('expense-categories', [ExpensesController::class, 'storeCategory'])->name('expense-categories.store');
+            Route::put('expense-categories/{category}', [ExpensesController::class, 'updateCategory'])->name('expense-categories.update');
+            Route::delete('expense-categories/{category}', [ExpensesController::class, 'destroyCategory'])->name('expense-categories.destroy');
+            Route::post('suppliers', [ExpensesController::class, 'storeSupplier'])->name('suppliers.store');
+            Route::get('commissions/pending', [ExpensesController::class, 'pendingCommissions'])->name('commissions.pending');
+            Route::post('commissions/{personal}/settle', [ExpensesController::class, 'settle'])->name('commissions.settle');
 
             // Configuración: Mi empresa, Sucursales, Horarios y Métodos de pago
             Route::get('company', [SettingsController::class, 'showCompany'])->name('company');

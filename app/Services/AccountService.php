@@ -94,7 +94,8 @@ class AccountService
 
     /**
      * Punto único de salida de dinero. $data: amount, concept, category,
-     * movement_date, payment_method, reference, supplier_id, personal_id, created_by.
+     * expense_category_id, movement_date, payment_method, reference, notes,
+     * branch_id, supplier_id, personal_id, created_by.
      *
      * @throws DomainException
      */
@@ -109,7 +110,7 @@ class AccountService
                 $this->assertCovers($account, $amount);
             }
 
-            $movement = $this->cashMovement($companyId, $session?->id, $account?->id, 'egreso', $amount, $data);
+            $movement = $this->cashMovement($companyId, $session?->id, $account?->id, 'egreso', $amount, $data + ['number' => $this->nextExpenseNumber($companyId)]);
             if ($account) {
                 $this->entry($account, 'gasto', 'out', $amount, $data, $movement->id);
             }
@@ -137,13 +138,25 @@ class AccountService
 
     // ---- Movimientos propios de la cuenta ----
 
-    /** Aporte externo (dueño, socio): dinero nuevo, no es un ingreso del negocio. */
-    public function contribute(FinancialAccount $account, float $amount, array $data = []): AccountMovement
+    /** Dinero que entra de fuera (dueño, socio): no es un ingreso del negocio. */
+    public function contribute(FinancialAccount $account, float $amount, array $data = [], string $type = 'manual'): AccountMovement
+    {
+        return DB::transaction(function () use ($account, $amount, $data, $type) {
+            $locked = $this->lockedAccount((int) $account->company_id, $account->id);
+
+            return $this->entry($locked, $type, 'in', round($amount, 2), $data + ['concept' => 'Ingreso']);
+        });
+    }
+
+    /** Dinero que sale sin ser un gasto del negocio. @throws DomainException */
+    public function withdraw(FinancialAccount $account, float $amount, array $data = []): AccountMovement
     {
         return DB::transaction(function () use ($account, $amount, $data) {
             $locked = $this->lockedAccount((int) $account->company_id, $account->id);
+            $amount = round($amount, 2);
+            $this->assertCovers($locked, $amount);
 
-            return $this->entry($locked, 'aporte', 'in', round($amount, 2), $data + ['concept' => 'Aporte']);
+            return $this->entry($locked, 'manual', 'out', $amount, $data + ['concept' => 'Egreso']);
         });
     }
 
@@ -153,11 +166,11 @@ class AccountService
      *
      * @throws DomainException
      */
-    public function fundFromRequest(Request $request, FinancialAccount $account, float $amount, string $concept, string $date): void
+    public function fundFromRequest(Request $request, FinancialAccount $account, float $amount, string $concept, string $date, ?string $reference = null): void
     {
         $companyId = (int) $account->company_id;
         [$sessionId, $accountId] = $this->sourceFromRequest($request, $companyId, false);
-        $data = ['concept' => $concept, 'movement_date' => $date];
+        $data = ['concept' => $concept, 'movement_date' => $date, 'reference' => $reference];
 
         if ($sessionId) {
             $this->transfer($companyId, ['caja', $sessionId], ['cuenta', $account->id], $amount, $data);
@@ -223,20 +236,6 @@ class AccountService
         });
     }
 
-    /** Ajuste por diferencia al contar el dinero; el motivo es obligatorio. @throws DomainException */
-    public function adjust(FinancialAccount $account, string $direction, float $amount, string $reason, ?string $date = null): AccountMovement
-    {
-        return DB::transaction(function () use ($account, $direction, $amount, $reason, $date) {
-            $locked = $this->lockedAccount((int) $account->company_id, $account->id);
-            $amount = round($amount, 2);
-            if ($direction === 'out') {
-                $this->assertCovers($locked, $amount);
-            }
-
-            return $this->entry($locked, 'ajuste', $direction, $amount, ['concept' => 'Ajuste: ' . $reason, 'movement_date' => $date]);
-        });
-    }
-
     /**
      * Anula un movimiento de la cuenta (y su otra pata si es un traspaso).
      *
@@ -249,10 +248,11 @@ class AccountService
                 throw new DomainException('Este movimiento ya está anulado.');
             }
 
-            $cash = $movement->cash_movement_id ? CashMovement::withoutGlobalScopes()->find($movement->cash_movement_id) : null;
-            if ($cash && $cash->isGenerated() && $cash->category !== CashMovement::CATEGORY_TRANSFER) {
-                throw new DomainException('Este movimiento proviene de otro módulo: anúlalo desde su origen.');
+            if (!$movement->canVoidHere()) {
+                throw new DomainException('Este movimiento se anula desde su origen: el gasto, el pago o la compra.');
             }
+
+            $cash = $movement->cash_movement_id ? CashMovement::withoutGlobalScopes()->find($movement->cash_movement_id) : null;
             if ($cash?->cash_session_id && !CashSession::find($cash->cash_session_id)?->isOpen()) {
                 throw new DomainException('La caja de este traspaso ya se cerró: no se puede anular.');
             }
@@ -289,6 +289,53 @@ class AccountService
                 ->get()->each(fn ($row) => $this->markVoided($row));
             CashMovement::withoutGlobalScopes()->find($cashMovementId)?->delete();
         });
+    }
+
+    /**
+     * Devuelve el dinero de un gasto anulado. De una cuenta: se anula su línea.
+     * De la caja: ingreso en el mismo turno si sigue abierto o, si no, en otro
+     * abierto. El arqueo de un turno cerrado no se altera.
+     *
+     * @throws DomainException
+     */
+    public function refundExpense(CashMovement $expense): void
+    {
+        DB::transaction(function () use ($expense) {
+            if ($expense->financial_account_id) {
+                AccountMovement::withoutGlobalScopes()->where('cash_movement_id', $expense->id)->whereNull('voided_at')
+                    ->get()->each(fn ($row) => $this->markVoided($row));
+
+                return;
+            }
+
+            if (!$expense->cash_session_id) {
+                return; // Gasto antiguo sin origen: no hay dinero que devolver.
+            }
+
+            $companyId = (int) $expense->company_id;
+            $open = fn () => CashSession::where('status', 'open')->whereHas('register', fn ($q) => $q->withoutGlobalScopes()->where('company_id', $companyId));
+            $session = (clone $open())->whereKey($expense->cash_session_id)->first() ?? $open()->first();
+            if (!$session) {
+                throw new DomainException('La caja de este gasto ya se cerró: abre un turno para devolver ahí el dinero.');
+            }
+
+            $this->cashMovement($companyId, $session->id, null, 'ingreso', (float) $expense->amount, [
+                'concept'       => 'Anulación gasto ' . ($expense->number ?: $expense->concept),
+                'category'      => CashMovement::CATEGORY_TRANSFER,
+                'movement_date' => today(),
+                'reference'     => $expense->number,
+            ]);
+        });
+    }
+
+    /** Siguiente número de gasto de la empresa (G-000001). */
+    public function nextExpenseNumber(int $companyId): string
+    {
+        $last = CashMovement::withoutGlobalScopes()->withTrashed()->where('company_id', $companyId)
+            ->where('number', 'like', 'G-%')->lockForUpdate()
+            ->selectRaw('MAX(CAST(SUBSTRING(number, 3) AS UNSIGNED)) as n')->value('n');
+
+        return 'G-' . str_pad((string) ((int) $last + 1), 6, '0', STR_PAD_LEFT);
     }
 
     // ---- Internos ----
@@ -346,6 +393,10 @@ class AccountService
             'company_id'           => $companyId,
             'cash_session_id'      => $sessionId,
             'financial_account_id' => $accountId,
+            'branch_id'            => $data['branch_id'] ?? null,
+            'number'               => $data['number'] ?? null,
+            'expense_category_id'  => $data['expense_category_id'] ?? null,
+            'notes'                => $data['notes'] ?? null,
             'type'                 => $type,
             'amount'               => $amount,
             'concept'              => $data['concept'],

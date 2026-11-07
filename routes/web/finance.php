@@ -3,6 +3,8 @@
 use App\Http\Controllers\Finance\CajaController;
 use App\Http\Controllers\Finance\CashMovementController;
 use App\Http\Controllers\Finance\CashSessionController;
+use App\Http\Controllers\Finance\ExpenseCategoryController;
+use App\Http\Controllers\Finance\ExpenseController;
 use App\Http\Controllers\Finance\FinancialAccountController;
 use App\Http\Controllers\Finance\PayableController;
 use App\Http\Controllers\Finance\ReceivableController;
@@ -40,10 +42,11 @@ Route::prefix('admin/incomes')->name('incomes.')
 // Gastos
 Route::prefix('admin/expenses')->name('expenses.')
     ->middleware('check-permission:expenses.view')->group(function () {
-        Route::get('/', [CashMovementController::class, 'index'])->name('index');
-        Route::get('/create', [CashMovementController::class, 'create'])->name('create')->middleware('check-permission:expenses.create');
-        Route::post('/', [CashMovementController::class, 'store'])->name('store')->middleware('check-permission:expenses.create');
-        Route::delete('/{movement}', [CashMovementController::class, 'destroy'])->name('destroy')->middleware('check-permission:expenses.delete');
+        Route::get('/', [ExpenseController::class, 'index'])->name('index');
+        Route::get('/create', [ExpenseController::class, 'create'])->name('create')->middleware('check-permission:expenses.create');
+        Route::post('/', [ExpenseController::class, 'store'])->name('store')->middleware('check-permission:expenses.create');
+        Route::get('/{expense}', [ExpenseController::class, 'show'])->name('show');
+        Route::post('/{expense}/cancel', [ExpenseController::class, 'cancel'])->name('cancel')->middleware('check-permission:expenses.delete');
     });
 
 // Cuentas (caja chica, bancos) y sus movimientos
@@ -55,10 +58,17 @@ Route::prefix('admin/accounts')->name('accounts.')->middleware('check-permission
     Route::get('/{financialAccount}/edit', [FinancialAccountController::class, 'edit'])->name('edit')->middleware('check-permission:accounts.edit');
     Route::put('/{financialAccount}', [FinancialAccountController::class, 'update'])->name('update')->middleware('check-permission:accounts.edit');
     Route::delete('/{financialAccount}', [FinancialAccountController::class, 'destroy'])->name('destroy')->middleware('check-permission:accounts.delete');
-    Route::post('/{financialAccount}/contribute', [FinancialAccountController::class, 'contribute'])->name('contribute')->middleware('check-permission:accounts.move');
+    Route::post('/{financialAccount}/movement', [FinancialAccountController::class, 'movement'])->name('movement')->middleware('check-permission:accounts.move');
     Route::post('/{financialAccount}/transfer', [FinancialAccountController::class, 'transfer'])->name('transfer')->middleware('check-permission:accounts.move');
-    Route::post('/{financialAccount}/adjust', [FinancialAccountController::class, 'adjust'])->name('adjust')->middleware('check-permission:accounts.move');
     Route::post('/{financialAccount}/movements/{movement}/void', [FinancialAccountController::class, 'voidMovement'])->name('movements.void')->middleware('check-permission:accounts.move');
+});
+
+// Categorías de gasto
+Route::prefix('admin/expense-categories')->name('expense-categories.')->middleware('check-permission:expense_categories.view')->group(function () {
+    Route::get('/', [ExpenseCategoryController::class, 'index'])->name('index');
+    Route::post('/', [ExpenseCategoryController::class, 'store'])->name('store')->middleware('check-permission:expense_categories.create');
+    Route::put('/{expenseCategory}', [ExpenseCategoryController::class, 'update'])->name('update')->middleware('check-permission:expense_categories.edit');
+    Route::delete('/{expenseCategory}', [ExpenseCategoryController::class, 'destroy'])->name('destroy')->middleware('check-permission:expense_categories.delete');
 });
 
 // Cuentas por cobrar (ventas a crédito)

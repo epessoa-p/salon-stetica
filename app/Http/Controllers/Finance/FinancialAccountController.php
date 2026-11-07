@@ -48,7 +48,6 @@ class FinancialAccountController extends Controller
         return view('finance.accounts.create', [
             'account' => new FinancialAccount(['type' => 'caja_chica', 'active' => true]),
             'types'   => FinancialAccount::TYPES,
-            'sources' => $this->accounts->sourceOptions($companyId),
             'setting' => CompanySetting::current($companyId),
         ]);
     }
@@ -65,10 +64,10 @@ class FinancialAccountController extends Controller
         $initial = round((float) $request->input('initial_amount'), 2);
 
         try {
-            $account = DB::transaction(function () use ($request, $data, $companyId, $initial) {
+            $account = DB::transaction(function () use ($data, $companyId, $initial) {
                 $account = FinancialAccount::create($data + ['company_id' => $companyId, 'created_by' => auth()->id()]);
                 if ($initial > 0) {
-                    $this->accounts->fundFromRequest($request, $account, $initial, 'Aporte inicial', today()->toDateString());
+                    $this->accounts->contribute($account, $initial, ['concept' => 'Saldo inicial'], 'apertura');
                 }
 
                 return $account;
@@ -152,19 +151,25 @@ class FinancialAccountController extends Controller
         return redirect()->route('accounts.index')->with('success', 'Cuenta eliminada.');
     }
 
-    /** Aporte: externo o desde una caja abierta u otra cuenta. */
-    public function contribute(Request $request, FinancialAccount $financialAccount)
+    /** Ingreso o egreso manual; un ingreso puede venir de una caja abierta u otra cuenta. */
+    public function movement(Request $request, FinancialAccount $financialAccount)
     {
         $this->authorizeAccount($financialAccount);
         $data = $this->moneyData($request);
+        $request->validate(['direction' => ['required', 'in:in,out'], 'concept' => ['required'], 'reference' => ['nullable', 'string', 'max:255']], ['concept.required' => 'Escribe el concepto.']);
+        $reference = $request->input('reference');
 
         try {
-            $this->accounts->fundFromRequest($request, $financialAccount, (float) $data['amount'], $data['concept'] ?: 'Aporte', $data['movement_date']);
+            if ($request->input('direction') === 'in') {
+                $this->accounts->fundFromRequest($request, $financialAccount, (float) $data['amount'], $data['concept'], $data['movement_date'], $reference);
+            } else {
+                $this->accounts->withdraw($financialAccount, (float) $data['amount'], ['concept' => $data['concept'], 'movement_date' => $data['movement_date'], 'reference' => $reference]);
+            }
         } catch (DomainException $e) {
             return back()->withInput()->withErrors(['error' => $e->getMessage()]);
         }
 
-        return back()->with('success', 'Aporte registrado.');
+        return back()->with('success', 'Movimiento registrado.');
     }
 
     /** Traspaso hacia otra cuenta o hacia una caja abierta. Destino: cuenta:ID o caja:ID. */
@@ -184,24 +189,6 @@ class FinancialAccountController extends Controller
         }
 
         return back()->with('success', 'Traspaso registrado.');
-    }
-
-    public function adjust(Request $request, FinancialAccount $financialAccount)
-    {
-        $this->authorizeAccount($financialAccount);
-        $data = $request->validate([
-            'direction' => ['required', 'in:in,out'],
-            'amount'    => ['required', 'numeric', 'min:0.01'],
-            'reason'    => ['required', 'string', 'max:200'],
-        ], ['reason.required' => 'Indica el motivo del ajuste.', 'amount.min' => 'El monto debe ser mayor a 0.']);
-
-        try {
-            $this->accounts->adjust($financialAccount, $data['direction'], (float) $data['amount'], $data['reason']);
-        } catch (DomainException $e) {
-            return back()->withInput()->withErrors(['error' => $e->getMessage()]);
-        }
-
-        return back()->with('success', 'Ajuste registrado.');
     }
 
     public function voidMovement(FinancialAccount $financialAccount, AccountMovement $movement)

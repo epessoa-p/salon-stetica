@@ -12,17 +12,18 @@
     $accounts = $sources['accounts'];
     $canUseAccounts = $sources['canUseAccounts'];
     $sourceId = 'src-' . uniqid();
-    $current = old('source_type', $selectedAccount && $canUseAccounts ? 'cuenta' : ($sessions->isNotEmpty() ? 'caja' : ($accounts->isNotEmpty() ? 'cuenta' : ($noneLabel ? 'ninguno' : 'caja'))));
+    // Por defecto la cuenta; si no hay, la caja. Un ingreso manual empieza en «externo».
+    $current = old('source_type', ($preferNone ?? false) ? 'ninguno' : ($accounts->isNotEmpty() && $canUseAccounts ? 'cuenta' : ($sessions->isNotEmpty() ? 'caja' : ($noneLabel ? 'ninguno' : 'caja'))));
 @endphp
 <div class="payment-source mb-2" id="{{ $sourceId }}" data-amount="{{ $amount ?? '' }}" data-amount-input="{{ $amountInput ?? '' }}" data-warn-balance="{{ $label === 'Sale de' ? '1' : '0' }}">
     <label class="form-label small mb-1 d-block">{{ $label }} <span class="text-danger">*</span></label>
     <div class="btn-group w-100 mb-2" role="group">
-        <input type="radio" class="btn-check" name="source_type" id="{{ $sourceId }}-caja" value="caja" autocomplete="off" @checked($current === 'caja')>
-        <label class="btn btn-outline-primary btn-sm" for="{{ $sourceId }}-caja"><i class="bi bi-safe"></i> Caja abierta</label>
         @if($canUseAccounts)
             <input type="radio" class="btn-check" name="source_type" id="{{ $sourceId }}-cuenta" value="cuenta" autocomplete="off" @checked($current === 'cuenta')>
             <label class="btn btn-outline-primary btn-sm" for="{{ $sourceId }}-cuenta"><i class="bi bi-wallet2"></i> Cuenta</label>
         @endif
+        <input type="radio" class="btn-check" name="source_type" id="{{ $sourceId }}-caja" value="caja" autocomplete="off" @checked($current === 'caja')>
+        <label class="btn btn-outline-primary btn-sm" for="{{ $sourceId }}-caja"><i class="bi bi-safe"></i> Caja abierta</label>
         @if($noneLabel)
             <input type="radio" class="btn-check" name="source_type" id="{{ $sourceId }}-ninguno" value="ninguno" autocomplete="off" @checked($current === 'ninguno')>
             <label class="btn btn-outline-primary btn-sm" for="{{ $sourceId }}-ninguno">{{ $noneLabel }}</label>
@@ -35,7 +36,7 @@
         @else
             <select name="cash_session_id" class="form-select form-select-sm" aria-label="Caja abierta">
                 @foreach($sessions as $s)
-                    <option value="{{ $s->id }}" @selected((string) old('cash_session_id') === (string) $s->id)>{{ $s->register?->name ?? 'Caja' }}</option>
+                    <option value="{{ $s->id }}" @selected((string) old('cash_session_id') === (string) $s->id)>{{ $s->register?->name ?? 'Caja' }} · esperado {{ number_format($s->expectedBalance(), 2) }}</option>
                 @endforeach
             </select>
         @endif

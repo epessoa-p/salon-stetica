@@ -13,11 +13,11 @@
         </select>
     </div>
     <div class="col-md-7" data-bank>
-        <label class="form-label">Banco</label>
+        <label class="form-label">Banco o billetera (opcional)</label>
         <input type="text" name="bank_name" class="form-control" value="{{ old('bank_name', $account->bank_name) }}" maxlength="120">
     </div>
     <div class="col-md-5" data-bank>
-        <label class="form-label">N.º de cuenta</label>
+        <label class="form-label">N.º de cuenta (opcional)</label>
         <input type="text" name="account_number" class="form-control no-uppercase" value="{{ old('account_number', $account->account_number) }}" maxlength="60">
     </div>
     <div class="col-12">
@@ -26,10 +26,10 @@
     </div>
 </div>
 <script>
-    // Banco y número solo aplican a las cuentas de banco.
+    // Banco y número aplican a bancos y billeteras.
     (function () {
         const type = document.getElementById('acc-type');
-        const toggle = () => document.querySelectorAll('[data-bank]').forEach((el) => el.classList.toggle('d-none', type.value !== 'banco'));
+        const toggle = () => document.querySelectorAll('[data-bank]').forEach((el) => el.classList.toggle('d-none', !['banco', 'billetera'].includes(type.value)));
         type.addEventListener('change', toggle);
         toggle();
     })();
